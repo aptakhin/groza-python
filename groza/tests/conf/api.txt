@@ -1,0 +1,18 @@
+ALL {
+    db = groza_api_dev
+
+}
+
+companies = {
+    wrights = [
+        {
+            rw($user) = {
+                db: $companies.company_id, $user.user_id, >=member
+            }
+        }
+    ]
+}
+
+boxes {
+    wrights
+}
