@@ -9,9 +9,6 @@ def parse(sub: str):
     return table, key
 
 
-
-
-
 class Ridger:
     def __init__(self, db: PostgresDB):
         self.db = db
@@ -55,7 +52,9 @@ class Ridger:
                         continue
 
                     field_parent_id = fields[field][0]
-                    res[field] = list(await self.db.fetch(f"SELECT * FROM {field} WHERE {field_parent_id} = $1", key))
+                    children = await self.db.fetch(f"SELECT * FROM {field} WHERE {field_parent_id} = $1", key)
+
+                    res[field] = [dict(child) for child in children]
 
             result["data"] = res
             result["status"] = "ok"

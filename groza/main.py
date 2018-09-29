@@ -144,9 +144,6 @@ def main():
 
     # log.info("Running on %s:%d", args.host, args.port)
     asyncio.get_event_loop().run_until_complete(asyncio.gather(start_server, server.loop()))
-    # asyncio.get_event_loop().run_until_complete(start_server)
-    # asyncio.get_event_loop().run_until_complete(server.loop())
-
     asyncio.get_event_loop().run_forever()
 
 
