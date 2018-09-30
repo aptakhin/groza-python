@@ -38,7 +38,6 @@ class Ridger:
                 res = None
             else:
                 res = dict(res)
-                print(dict(res))
 
                 fields = self.tables[table][1]
 
@@ -52,7 +51,7 @@ class Ridger:
                         continue
 
                     field_parent_id = fields[field][0]
-                    children = await self.db.fetch(f"SELECT * FROM {field} WHERE {field_parent_id} = $1", key)
+                    children = await self.db.fetch(f"SELECT * FROM {field} WHERE {field_parent_id} = $1 ORDER BY ord", key)
 
                     res[field] = [dict(child) for child in children]
 
@@ -67,3 +66,63 @@ class Ridger:
             resp["errors"] = errors
 
         return resp
+
+    async def query_insert(self, query, insert):
+        resp = {}
+        table = query["table"]
+        if table not in self.tables:
+            return {"errors": [f"Table '{table}' is not handled"]}
+
+        desc = self.tables[table]
+
+        idx = 1
+        args = ()
+        fields = []
+        values = []
+        for key, value in insert.items():
+            if key == desc[0]:
+                continue
+            fields.append(f"{key}")
+            values.append(f"${idx}")
+            args += (value,)
+            idx += 1
+
+        fields_str = ", ".join(fields)
+        values_str = ", ".join(values)
+
+        primary_key = desc[0]
+
+        query = f"INSERT INTO {table} ({fields_str}) VALUES ({values_str}) RETURNING {primary_key}"
+        result = await self.db.fetchrow(query, *args)
+        if not result:
+            return {"status": "error", "message": "No result"}
+
+        return {"status": "ok", primary_key: result[primary_key]}
+
+    async def query_update(self, query, update):
+        resp = {}
+        table = query["table"]
+        if table not in self.tables:
+            return {"errors": [f"Table '{table}' is not handled"]}
+
+        desc = self.tables[table]
+
+        idx = 1
+        args = ()
+        fields = []
+        for key, value in update.items():
+            fields.append(f"{key} = ${idx}")
+            args += (value,)
+            idx += 1
+        value_fields = ", ".join(fields)
+
+        primary_key_field = desc[0]
+
+        args += (query[primary_key_field],)
+        primary_key_idx = idx
+
+        idx += 1
+        query = f"UPDATE {table} SET {value_fields} WHERE {primary_key_field} = ${primary_key_idx}"
+        await self.db.execute(query, *args)
+
+        return {"status": "ok"}

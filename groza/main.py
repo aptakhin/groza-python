@@ -27,44 +27,52 @@ class Connection:
         self.all_sub = {}
 
     async def handle_request(self, request):
-        if request.get("type") not in ("sub", "auth"):
+        resp = {
+            "response": request["counter"],
+        }
+
+        if not isinstance(request.get("counter"), (int,)):
+            resp.update({"status": "error", "message": "Invalid not integer counter"})
+            return resp
+
+        if request.get("type") not in ("sub", "auth", "update", "insert"):
             return {"status": "error", "message": "Invalid type"}
 
-        resp = {}
+        handle_resp = {}
         req_type = request["type"]
         if req_type == "auth":
             self.auth_token = request.get("token")
         elif req_type == "sub":
             if "sub" not in request or not isinstance(request["sub"], dict):
                 return {"status": "error", "message": "Invalid not dict sub"}
-
             self.all_sub = request["sub"]
+            handle_resp = await self.handler.fetch_sub(self.all_sub)
+        elif req_type == "update":
+            query = request["query"]
+            update = request["update"]
+            handle_resp = await self.handler.query_update(query, update)
+        elif req_type == "insert":
+            query = request["query"]
+            insert = request["insert"]
+            handle_resp = await self.handler.query_insert(query, insert)
+        else:
+            raise RuntimeError("Unhandled type %s" % req_type)
 
-            return await self.handler.fetch_sub(self.all_sub)
+        resp.update(handle_resp)
 
         return resp
 
     async def handle(self):
         async for message in self.ws:
-            self.log.debug(f"Req : {message}")
-            request = json.loads(message)
+            try:
+                self.log.debug(f"Req : {message}")
+                request = json.loads(message)
 
-            resp = {
-                "response": request["counter"],
-            }
+                handler_resp = await self.handle_request(request)
 
-            if not isinstance(request.get("counter"), (int,)):
-                resp.update({"status": "error", "message": "Invalid not integer counter"})
-                return resp
-
-            if request.get("type") not in ("sub", "auth"):
-                resp.update({"status": "error", "message": "Invalid type"})
-                return resp
-
-            handler_resp = await self.handle_request(request)
-            resp.update(handler_resp)
-
-            await self.send(resp)
+                await self.send(handler_resp)
+            except:
+                self.log.exception("Exception handling message: %s" % message)
 
     async def send(self, resp):
         js = json.dumps(resp)
