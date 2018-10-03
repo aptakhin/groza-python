@@ -7,7 +7,7 @@ from typing import List
 import websockets
 
 from groza.postgres import PostgresDB
-from groza.ridger import Ridger
+from groza.instance import Groza
 from groza.utils import build_logger, init_file_loggers
 
 
@@ -19,7 +19,7 @@ class ServerProtocol(websockets.WebSocketServerProtocol):
 
 class Connection:
     def __init__(self, handler, ws, queries):
-        self.handler: Ridger = handler
+        self.handler: Groza = handler
         self.ws = ws
         self.queries = queries
         self.log = build_logger("WS")
@@ -90,7 +90,7 @@ class Server:
         self.conns: List[Connection] = []
         self.queries = []
         self.db = PostgresDB()
-        self.handler = Ridger(self.db)
+        self.handler = Groza(self.db)
         self.notif_conn = None
 
         self.notifies = asyncio.Queue()

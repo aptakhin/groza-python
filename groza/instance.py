@@ -3,13 +3,16 @@ from groza.postgres import PostgresDB
 
 def parse(sub: str):
     ind = sub.rfind("_")
-    table = sub[:ind]
-    key = int(sub[ind + 1:])
-
+    if ind == -1:
+        table = sub
+        key = None
+    else:
+        table = sub[:ind]
+        key = int(sub[ind + 1:])
     return table, key
 
 
-class Ridger:
+class Groza:
     def __init__(self, db: PostgresDB):
         self.db = db
         self.tables = {
@@ -24,7 +27,7 @@ class Ridger:
         resp = {}
         data = {}
         errors = []
-        for sub, subDesc in all_sub.items():
+        for sub, sub_desc in all_sub.items():
             result = {}
 
             table, key = parse(sub)
@@ -32,16 +35,24 @@ class Ridger:
                 errors.append(f"Table '{key}' is not handled")
                 continue
 
-            primary_key = self.tables[table][0]
-            res = await self.db.fetchrow(f"SELECT * FROM {table} WHERE {primary_key} = $1", key)
-            if not res:
-                res = None
-            else:
-                res = dict(res)
+            query = f"SELECT * FROM {table}"
+            args = ()
+            idx = 1
+
+            if key is not None:
+                primary_key = self.tables[table][0]
+                query += f" WHERE {primary_key} = ${idx}"
+                args += (key,)
+                idx += 1
+
+            items = await self.db.fetch(query, *args)
+            res_items = []
+            for res in items:
+                res_item = dict(res)
 
                 fields = self.tables[table][1]
 
-                sub_fields = subDesc.get("fields", [])
+                sub_fields = sub_desc.get("fields", [])
                 if isinstance(sub_fields, str):
                     sub_fields = [sub_fields]
 
@@ -51,11 +62,13 @@ class Ridger:
                         continue
 
                     field_parent_id = fields[field][0]
-                    children = await self.db.fetch(f"SELECT * FROM {field} WHERE {field_parent_id} = $1 ORDER BY ord", key)
+                    children = await self.db.fetch(f"SELECT * FROM {field} WHERE {field_parent_id} = $1 ORDER BY ord", res[field_parent_id])
 
-                    res[field] = [dict(child) for child in children]
+                    res_item[field] = [dict(child) for child in children]
 
-            result["data"] = res
+                res_items.append(res_item)
+
+            result["data"] = res_items[0] if key else res_items
             result["status"] = "ok"
 
             data[sub] = result
