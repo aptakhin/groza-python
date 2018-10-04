@@ -241,32 +241,6 @@ class Groza:
                     FOR EACH ROW EXECUTE PROCEDURE "{audit_table_func}"()
             """)
 
-"""
-
-
-
-insert into foo(a, b, time, lastChangedBy) VALUES(1, 2, now(), 2);
-update foo set time=now(), a=2 where b=3;
-delete from foo where b=2;
-
-
-CREATE EXTENSION hstore;
-CREATE SEQUENCE fooAudioIdSeq;
-CREATE TABLE fooAudit (
-    "id" int8 PRIMARY KEY,
-    "operation" bpchar NOT NULL,
-    "time" timestamp NOT NULL,
-    "o" hstore,
-    "n" hstore,
-    "lastChangedBy" int8
-);
-
-
-DROP TRIGGER on_foo_insert ON foo;
-create trigger on_foo_insert before insert or update or delete on foo 
-  for each row execute procedure foo_insert(); 
-"""
-
 
 def test():
     async def t():
