@@ -90,7 +90,12 @@ class Server:
         self.conns: List[Connection] = []
         self.queries = []
         self.db = PostgresDB()
-        self.handler = Groza(self.db)
+        self.tables = {
+            "boxes": ("boxId", {}),
+            "tasks": ("taskId", {"boxes": ("boxId",)}),
+        }
+
+        self.handler = Groza(self.tables, self.db)
         self.notif_conn = None
 
         self.notifies = asyncio.Queue()
@@ -121,6 +126,7 @@ class Server:
         self.notifies.put_nowait((channel, obj_id))
 
     async def loop(self):
+        self.log.info("Started loop")
         while True:
             while not self.notifies.empty():
                 channel, obj_id = await self.notifies.get()
