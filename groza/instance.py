@@ -14,6 +14,14 @@ def parse_subscription(sub: str):
     return table, key
 
 
+class Table:
+    def __init__(self, table, primary_key, foreign=None):
+        self.table = table
+        self.primary_key = primary_key
+
+        self.foreign = foreign if foreign is not None else {}
+
+
 class Groza:
     def __init__(self, tables, db: PostgresDB):
         self.tables = tables
@@ -46,7 +54,7 @@ class Groza:
             sub_desc_from = sub_desc.get("fromSub")
             if sub_desc_from is not None:
                 if sub_desc_from not in sub_resp:
-                    errors.append("Link '%s' not found in results. Check identifiers and order." % sub_desc_from)
+                    errors.append("Link '%s' not found in results. Check identifiers and order" % sub_desc_from)
                     continue
 
                 link_table = all_sub[sub_desc_from]["table"]
@@ -63,7 +71,13 @@ class Groza:
                 idx += 1
 
             items = list(await self.db.fetch(query, *args))
+
             add_data = {item[primary_key_field]: dict(item) for item in items}
+
+            # if table == "tasks":
+            #     for i in range(200, 1200):
+            #         add_data[i] = dict(add_data[117])
+            #         add_data[i]["taskId"] = i
 
             data.setdefault(table, {})
             data[table].update(add_data)
@@ -71,18 +85,32 @@ class Groza:
             ids = []
             recursive_field, recursive_inject = sub_desc.get("recursive", (None, None))
 
+            assert (recursive_field is None and recursive_inject is None
+                 or recursive_field is not None and recursive_inject is not None)
+
+            if recursive_field:
+                for key in add_data.keys():
+                    add_data[key].setdefault(recursive_inject, [])
+
             for key, item in add_data.items():
                 if recursive_field and item.get(recursive_field):
-                    data[table][item[recursive_field]].setdefault(recursive_inject, [])
-                    data[table][item[recursive_field]][recursive_inject].append(item[primary_key_field])
+                    inject_to = data[table][item[recursive_field]]
+                    inject_to.setdefault(recursive_inject, [])
+                    inject_to[recursive_inject].append(item[primary_key_field])
                     continue
+
                 ids.append(item[primary_key_field])
 
             if sub_desc.get("inject"):
                 inject_to = {}
-                for item in items:
+                for iid in ids:
+                    item = add_data[iid]
                     inject_to.setdefault(item[link_field], [])
                     inject_to[item[link_field]].append(item[primary_key_field])
+
+                for key in data[link_table].keys():
+                    assert sub_desc["inject"] not in data[link_table][key]
+                    data[link_table][key][sub_desc["inject"]] = []
 
                 for inj, values in inject_to.items():
                     data[link_table][inj][sub_desc["inject"]] = values
@@ -112,22 +140,27 @@ class Groza:
 
         idx = 1
         args = ()
-        fields = []
-        values = []
+        own_fields = []
+        own_values = []
+
+
         for key, value in insert.items():
             if key == desc[0]:
                 continue
-            fields.append(f'"{key}"')
-            values.append(f"${idx}")
+            #
+            # if key in desc[1]:
+
+            own_fields.append(f'"{key}"')
+            own_values.append(f"${idx}")
             args += (value,)
             idx += 1
 
-        fields_str = ", ".join(fields)
-        values_str = ", ".join(values)
+        own_fields_str = ", ".join(own_fields)
+        own_values_str = ", ".join(own_values)
 
         primary_key = desc[0]
 
-        query = f'INSERT INTO {table} ({fields_str}) VALUES ({values_str}) RETURNING "{primary_key}"'
+        query = f'INSERT INTO {table} ({own_fields_str}) VALUES ({own_values_str}) RETURNING "{primary_key}"'
         result = await self.db.fetchrow(query, *args)
         if not result:
             return {"status": "error", "message": "No result"}
@@ -196,6 +229,9 @@ class Groza:
             use_int_key = f'OLD."{primary_key_field}"' if True else 'NULL'
             use_var_key = f'OLD."{primary_key_field}"' if False else 'NULL'
 
+            use_int_key_new = f'NEW."{primary_key_field}"' if True else 'NULL'
+            use_var_key_new = f'NEW."{primary_key_field}"' if False else 'NULL'
+
             await self.db.execute(f"""
                 CREATE OR REPLACE FUNCTION "{audit_table_func}"() RETURNS TRIGGER AS 
                 $$ 
@@ -222,8 +258,8 @@ class Groza:
                     PERFORM pg_notify('{table}', NEW."{primary_key_field}"::text);
                     RETURN NEW;
                   ELSIF (TG_OP = 'INSERT') THEN
-                     INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), NEW."{last_updated_by_field}", {use_int_key}, now(), 'I', '{table}', {use_var_key}, hstore(''), hstore(NEW);
-                     PERFORM pg_notify('{table}', OLD."{primary_key_field}"::text);
+                     INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), NEW."{last_updated_by_field}", {use_int_key_new}, now(), 'I', '{table}', {use_var_key_new}, hstore(''), hstore(NEW);
+                     PERFORM pg_notify('{table}', NEW."{primary_key_field}"::text);
                      RETURN NEW;
                   END IF;
                   RETURN NULL;
@@ -280,9 +316,14 @@ def test():
             await conn.execute(f'INSERT INTO {tasks} ("boxId", "title") VALUES ($1, $2)', 2, "First Task of Second Box")
 
         tables = {
-            boxes: ("boxId", {}),
-            tasks: ("taskId", {boxes: ("boxId",)}),
+            boxes: Table("boxId", {}),
+            tasks: Table("taskId", {boxes: ("boxId",)}),
         }
+
+        # tables2 = {
+        #     boxes: Table("boxId", foreign={"taskIds": Foreign(tasks, "boxId")}),
+        #     tasks: Table("taskId", foreign={boxes: "boxId"}),
+        # }
 
         groza = Groza(tables, db)
 
@@ -293,9 +334,18 @@ def test():
 
         res = await groza.fetch_sub(subscription)
 
-        assert res["sub"]["allBoxes"]["ids"] == [1, 2]
-        assert res["sub"]["boxTasks"]["ids"] == [1, 3, 4]
+        assert set(res["sub"]["allBoxes"]["ids"]) == {1, 2}
+        assert set(res["sub"]["boxTasks"]["ids"]) == {1, 3, 4}
+
+        assert set(res["data"][boxes][1]["taskIds"]) == {1, 3}
         assert res["data"][tasks][1]["childrenIds"] == [2]
+
+        assert res["data"][tasks][2]["childrenIds"] == []
+        assert res["data"][tasks][3]["childrenIds"] == []
+        assert res["data"][tasks][4]["childrenIds"] == []
+
+        assert all((isinstance(task_data["childrenIds"], list)
+                    for task_data in res["data"][tasks].values()))
 
         for sub, sub_resp in res["sub"].items():
             sent_id_not_in_data = set(sub_resp["ids"]) - set(res["data"][subscription[sub]["table"]])

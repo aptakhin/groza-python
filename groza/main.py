@@ -20,6 +20,7 @@ class ServerProtocol(websockets.WebSocketServerProtocol):
 class Connection:
     def __init__(self, handler, ws, queries):
         self.handler: Groza = handler
+        self.user_id = None
         self.ws = ws
         self.queries = queries
         self.log = build_logger("WS")
@@ -42,6 +43,7 @@ class Connection:
         req_type = request["type"]
         if req_type == "auth":
             self.auth_token = request.get("token")
+            self.user_id = 1
         elif req_type == "sub":
             if "sub" not in request or not isinstance(request["sub"], dict):
                 return {"status": "error", "message": "Invalid not dict sub"}
