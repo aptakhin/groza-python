@@ -17,10 +17,16 @@ class ServerProtocol(websockets.WebSocketServerProtocol):
             return http.HTTPStatus.OK, [], b'OK\n'
 
 
+class User:
+    def __init__(self, auth_token=None, user_id=None):
+        self.auth_token = auth_token
+        self.user_id = user_id
+
+
 class Connection:
     def __init__(self, handler, ws, queries):
         self.handler: Groza = handler
-        self.user_id = None
+        self.user = User()
         self.ws = ws
         self.queries = queries
         self.log = build_logger("WS")
@@ -42,21 +48,21 @@ class Connection:
         handle_resp = {}
         req_type = request["type"]
         if req_type == "auth":
-            self.auth_token = request.get("token")
-            self.user_id = 1
+            self.user.auth_token = request.get("token")
+            self.user.user_id = 1
         elif req_type == "sub":
             if "sub" not in request or not isinstance(request["sub"], dict):
                 return {"status": "error", "message": "Invalid not dict sub"}
             self.all_sub = request["sub"]
-            handle_resp = await self.handler.fetch_sub(self.all_sub)
+            handle_resp = await self.handler.fetch_sub(self.user, self.all_sub)
         elif req_type == "update":
             query = request["query"]
             update = request["update"]
-            handle_resp = await self.handler.query_update(query, update)
+            handle_resp = await self.handler.query_update(self.user, query, update)
         elif req_type == "insert":
             query = request["query"]
             insert = request["insert"]
-            handle_resp = await self.handler.query_insert(query, insert)
+            handle_resp = await self.handler.query_insert(self.user, query, insert)
         else:
             raise RuntimeError("Unhandled type %s" % req_type)
 
@@ -82,7 +88,7 @@ class Connection:
         await self.ws.send(js)
 
     async def send_sub(self):
-        resp = await self.handler.fetch_sub(self.all_sub)
+        resp = await self.handler.fetch_sub(self.user, self.all_sub)
         await self.send(resp)
 
 

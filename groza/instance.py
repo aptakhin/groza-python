@@ -30,7 +30,7 @@ class Groza:
     async def start(self):
         await self.start_tables()
 
-    async def fetch_sub(self, all_sub):
+    async def fetch_sub(self, user, all_sub):
         resp = {}
         data = {}
         errors = []
@@ -130,7 +130,7 @@ class Groza:
 
         return resp
 
-    async def query_insert(self, query, insert):
+    async def query_insert(self, user, query, insert):
         resp = {}
         table = query["table"]
         if table not in self.tables:
@@ -143,17 +143,19 @@ class Groza:
         own_fields = []
         own_values = []
 
-
         for key, value in insert.items():
             if key == desc[0]:
                 continue
-            #
-            # if key in desc[1]:
 
             own_fields.append(f'"{key}"')
             own_values.append(f"${idx}")
             args += (value,)
             idx += 1
+
+        own_fields.append('"lastUpdatedBy"')
+        own_values.append(f"${idx}")
+        args += (user.user_id,)
+        idx += 1
 
         own_fields_str = ", ".join(own_fields)
         own_values_str = ", ".join(own_values)
@@ -167,7 +169,7 @@ class Groza:
 
         return {"status": "ok", primary_key: result[primary_key]}
 
-    async def query_update(self, query, update):
+    async def query_update(self, user, query, update):
         resp = {}
         table = query["table"]
         if table not in self.tables:
@@ -182,6 +184,11 @@ class Groza:
             fields.append(f'"{key}" = ${idx}')
             args += (value,)
             idx += 1
+
+        fields.append(f'"lastUpdatedBy" = ${idx}')
+        args += (user.user_id,)
+        idx += 1
+
         value_fields = ", ".join(fields)
 
         primary_key_field = desc[0]
@@ -352,6 +359,7 @@ def test():
             assert not bool(sent_id_not_in_data)
 
     asyncio.get_event_loop().run_until_complete(t())
+
 
 if __name__ == "__main__":
     test()
