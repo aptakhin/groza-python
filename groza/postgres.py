@@ -12,8 +12,8 @@ class PostgresDB:
         self.port = 5432
         self.dbname = "ridger_dev"
         self.ssl = False
-        self.user = "alex"
-        self.password = "1123"
+        self.user = "ridger"
+        self.password = "ridger"
 
     async def connect(self):
         self.pool = await asyncpg.create_pool(host=self.host, port=self.port, database=self.dbname, ssl=self.ssl,

@@ -56,9 +56,8 @@ class Connection:
             self.all_sub = request["sub"]
             handle_resp = await self.handler.fetch_sub(self.user, self.all_sub)
         elif req_type == "update":
-            query = request["query"]
             update = request["update"]
-            handle_resp = await self.handler.query_update(self.user, query, update)
+            handle_resp = await self.handler.query_update(self.user, update)
         elif req_type == "insert":
             query = request["query"]
             insert = request["insert"]

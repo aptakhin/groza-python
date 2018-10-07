@@ -169,36 +169,40 @@ class Groza:
 
         return {"status": "ok", primary_key: result[primary_key]}
 
-    async def query_update(self, user, query, update):
-        resp = {}
-        table = query["table"]
-        if table not in self.tables:
-            return {"errors": [f"Table '{table}' is not handled"]}
+    async def query_update(self, user, update):
+        for cnt, (query, upd) in enumerate(update):
+            table = query["table"]
+            if table not in self.tables:
+                return {"errors": [f"Table '{table}' in #{cnt} row is not handled"]}
 
-        desc = self.tables[table]
+        async with self.db.pool.acquire() as conn:
+            async with conn.transaction():
+                for cnt, (query, upd) in enumerate(update):
+                    table = query["table"]
+                    desc = self.tables[table]
 
-        idx = 1
-        args = ()
-        fields = []
-        for key, value in update.items():
-            fields.append(f'"{key}" = ${idx}')
-            args += (value,)
-            idx += 1
+                    idx = 1
+                    args = ()
+                    fields = []
+                    for key, value in upd.items():
+                        fields.append(f'"{key}" = ${idx}')
+                        args += (value,)
+                        idx += 1
 
-        fields.append(f'"lastUpdatedBy" = ${idx}')
-        args += (user.user_id,)
-        idx += 1
+                    fields.append(f'"lastUpdatedBy" = ${idx}')
+                    args += (user.user_id,)
+                    idx += 1
 
-        value_fields = ", ".join(fields)
+                    value_fields = ", ".join(fields)
 
-        primary_key_field = desc[0]
+                    primary_key_field = desc[0]
 
-        args += (query[primary_key_field],)
-        primary_key_idx = idx
+                    args += (query[primary_key_field],)
+                    primary_key_idx = idx
 
-        idx += 1
-        query = f'UPDATE {table} SET {value_fields} WHERE "{primary_key_field}" = ${primary_key_idx}'
-        await self.db.execute(query, *args)
+                    idx += 1
+                    query_str = f'UPDATE {table} SET {value_fields} WHERE "{primary_key_field}" = ${primary_key_idx}'
+                    await conn.execute(query_str, *args)
 
         return {"status": "ok"}
 
