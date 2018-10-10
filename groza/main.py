@@ -42,12 +42,15 @@ class Connection:
             resp.update({"status": "error", "message": "Invalid not integer counter"})
             return resp
 
-        if request.get("type") not in ("sub", "auth", "update", "insert"):
+        if request.get("type") not in ("login", "sub", "auth", "update", "insert"):
             return {"status": "error", "message": "Invalid type"}
 
         handle_resp = {}
         req_type = request["type"]
-        if req_type == "auth":
+        if req_type == "login":
+            handle_resp = await self.handler.login(self.user, login=request.get("login"))
+            p = 0
+        elif req_type == "auth":
             self.user.auth_token = request.get("token")
             self.user.user_id = 1
         elif req_type == "sub":

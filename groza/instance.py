@@ -1,6 +1,22 @@
 import asyncio
+import hashlib
+import json
+from datetime import datetime, timedelta
 
 from groza.postgres import PostgresDB
+from groza.q import Q, QSafe
+
+SECRET_KEY = ";!FC,gvn58QUHok}ZKb]23.iXE<01?MkRVz-YL>T:iU6tlS89'yWaY&b_NE?5xsM"
+
+
+def hashit(passw):
+    if not passw:
+        raise ValueError("Empty password")
+    if len(passw) < 6:
+        raise ValueError("Too short password")
+    m = hashlib.sha3_256()
+    m.update((SECRET_KEY + passw).encode())
+    return m.hexdigest()
 
 
 def parse_subscription(sub: str):
@@ -29,6 +45,46 @@ class Groza:
 
     async def start(self):
         await self.start_tables()
+
+    async def login(self, user, login):
+        method = login["method"]
+        if method == "password":
+            email = login.get("data", {}).get("email")
+            if not email:
+                raise ValueError("Password can't be empty")
+            password = login.get("data", {}).get("password")
+            if not password:
+                raise ValueError("Password can't be empty")
+
+            passhash = hashit(password)
+            auth = await self.db.fetchrow("""
+                SELECT * FROM users_logins WHERE type=$1 AND main=$2 AND secondary=$3
+            """, method, email, passhash)
+            if not auth:
+                return {"status": "error", "code": 2, "message": "Can't find email/password pair"}
+
+            valid_until = datetime.now() + timedelta(days=1)
+            token = "abdasdas"
+
+            device = login.get("device", {})
+            add_data = {
+                "device": device,
+            }
+            q = Q.INSERT("users_auths").SET(
+                lastUpdatedBy=auth["userId"],
+                userLoginId=auth["userLoginId"],
+                userId=auth["userId"],
+                timeCreated=QSafe("now()"),
+                timeLastAccess=QSafe("now()"),
+                validUntil=valid_until,
+                token=token,
+                data=json.dumps(add_data),
+            )
+            await self.db.execute(q)
+
+            return {"status": "ok", "token": token}
+
+        return {"status": "err", "code": 1}
 
     async def fetch_sub(self, user, all_sub):
         resp = {}
