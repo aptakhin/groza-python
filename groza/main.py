@@ -8,7 +8,7 @@ import websockets
 
 from groza.postgres import PostgresDB
 from groza.instance import Groza
-from groza.utils import build_logger, init_file_loggers
+from groza.utils import build_logger, init_file_loggers, json_serial
 
 
 class ServerProtocol(websockets.WebSocketServerProtocol):
@@ -51,8 +51,11 @@ class Connection:
             handle_resp = await self.handler.login(self.user, login=request.get("login"))
             p = 0
         elif req_type == "auth":
-            self.user.auth_token = request.get("token")
-            self.user.user_id = 1
+            token = request["token"]
+            handle_resp = await self.handler.auth(self.user, token=token)
+            if handle_resp["status"] == "ok":
+                self.user.auth_token = token
+                self.user.user_id = handle_resp["userId"]
         elif req_type == "sub":
             if "sub" not in request or not isinstance(request["sub"], dict):
                 return {"status": "error", "message": "Invalid not dict sub"}
@@ -85,7 +88,7 @@ class Connection:
                 self.log.exception("Exception handling message: %s" % message)
 
     async def send(self, resp):
-        js = json.dumps(resp)
+        js = json.dumps(resp, default=json_serial)
         self.log.debug("Resp: %s" % js)
         await self.ws.send(js)
 
@@ -103,6 +106,7 @@ class Server:
         self.tables = {
             "boxes": ("boxId", {}),
             "tasks": ("taskId", {"boxes": ("boxId",)}),
+            "users": ("userId", {})
         }
 
         self.handler = Groza(self.tables, self.db)

@@ -12,8 +12,8 @@ SECRET_KEY = ";!FC,gvn58QUHok}ZKb]23.iXE<01?MkRVz-YL>T:iU6tlS89'yWaY&b_NE?5xsM"
 def hashit(passw):
     if not passw:
         raise ValueError("Empty password")
-    if len(passw) < 6:
-        raise ValueError("Too short password")
+    # if len(passw) < 6:
+    #     raise ValueError("Too short password")
     m = hashlib.sha3_256()
     m.update((SECRET_KEY + passw).encode())
     return m.hexdigest()
@@ -80,11 +80,26 @@ class Groza:
                 token=token,
                 data=json.dumps(add_data),
             )
-            await self.db.execute(q)
+            # await self.db.execute(q)
 
-            return {"status": "ok", "token": token}
+            return {"status": "ok", "token": token, "userId": auth["userId"], "type": "login"}
 
-        return {"status": "err", "code": 1}
+        return {"status": "error", "code": 1}
+
+    async def auth(self, user, token):
+        auth = await self.db.fetchrow("""
+            SELECT "userId", "validUntil" FROM users_auths WHERE token=$1
+        """, token)
+
+        if auth["validUntil"] < datetime.now():
+            return {"status": "error", "message": "Token expired", "code": 3}
+
+        await self.db.execute("""
+            UPDATE users_auths SET "timeLastAccess"=now() WHERE token=$1
+        """, token)
+
+        return {"status": "ok", "type": "auth", "userId": auth["userId"]}
+
 
     async def fetch_sub(self, user, all_sub):
         resp = {}
@@ -110,7 +125,7 @@ class Groza:
             sub_desc_from = sub_desc.get("fromSub")
             if sub_desc_from is not None:
                 if sub_desc_from not in sub_resp:
-                    errors.append("Link '%s' not found in results. Check identifiers and order" % sub_desc_from)
+                    errors.append(f"Link '{sub_desc_from}' not found in results. Check identifiers and order")
                     continue
 
                 link_table = all_sub[sub_desc_from]["table"]
@@ -178,6 +193,7 @@ class Groza:
                 "ids": ids,
             }
 
+        resp["type"] = "data"
         resp["data"] = data
         resp["sub"] = sub_resp
 
