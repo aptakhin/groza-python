@@ -3,6 +3,7 @@ import hashlib
 import json
 from datetime import datetime, timedelta
 
+from groza import User
 from groza.postgres import PostgresDB
 from groza.q import Q, QSafe
 
@@ -398,9 +399,10 @@ def test():
             await conn.execute(f'INSERT INTO {boxes} ("boxId", "title") VALUES ($1, $2)', 2, "Second Box")
             await conn.execute(f'INSERT INTO {tasks} ("boxId", "title") VALUES ($1, $2)', 2, "First Task of Second Box")
 
+
         tables = {
-            boxes: Table("boxId", {}),
-            tasks: Table("taskId", {boxes: ("boxId",)}),
+            boxes: ("boxId", {}),
+            tasks: ("taskId", {boxes: ("boxId",)}),
         }
 
         # tables2 = {
@@ -415,7 +417,7 @@ def test():
             "boxTasks": {"table": tasks, "fromSub": "allBoxes", "inject": "taskIds", "recursive": ("parentBoxId", "childrenIds")},
         }
 
-        res = await groza.fetch_sub(subscription)
+        res = await groza.fetch_sub(User(), subscription)
 
         assert set(res["sub"]["allBoxes"]["ids"]) == {1, 2}
         assert set(res["sub"]["boxTasks"]["ids"]) == {1, 3, 4}

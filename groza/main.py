@@ -6,6 +6,7 @@ from typing import List
 
 import websockets
 
+from groza import User
 from groza.postgres import PostgresDB
 from groza.instance import Groza
 from groza.utils import build_logger, init_file_loggers, json_serial
@@ -15,12 +16,6 @@ class ServerProtocol(websockets.WebSocketServerProtocol):
     async def process_request(self, path, request_headers):
         if path == '/status/':
             return http.HTTPStatus.OK, [], b'OK\n'
-
-
-class User:
-    def __init__(self, auth_token=None, user_id=None):
-        self.auth_token = auth_token
-        self.user_id = user_id
 
 
 class Connection:
@@ -106,7 +101,8 @@ class Server:
         self.tables = {
             "boxes": ("boxId", {}),
             "tasks": ("taskId", {"boxes": ("boxId",)}),
-            "users": ("userId", {})
+            "users": ("userId", {}),
+            "comments": ("commentId", {}),
         }
 
         self.handler = Groza(self.tables, self.db)
