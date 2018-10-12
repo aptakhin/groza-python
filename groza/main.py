@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import http
 import json
+from collections import OrderedDict
 from typing import List
 
 import websockets
@@ -74,7 +75,7 @@ class Connection:
         async for message in self.ws:
             try:
                 self.log.debug(f"Req : {message}")
-                request = json.loads(message)
+                request = json.loads(message, object_pairs_hook=OrderedDict)
 
                 handler_resp = await self.handle_request(request)
 

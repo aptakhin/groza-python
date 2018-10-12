@@ -3,7 +3,7 @@ def quoted(s):
     return '"%s"' % s
 
 
-class QSafe:
+class _Unsafe:
     __slots__ = ["value"]
 
     def __init__(self, value):
@@ -13,7 +13,20 @@ class QSafe:
         return self.value
 
     def __repr__(self):
-        return "QSafe(%s)" % repr(self.value)
+        return "Q.Unsafe(%s)" % repr(self.value)
+
+
+class _Any:
+    __slots__ = ["value"]
+
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return self.value
+
+    def __repr__(self):
+        return "Q.Any(%s)" % repr(self.value)
 
 
 class Expr:
@@ -26,30 +39,35 @@ class Expr:
         self.value = value
 
     def format(self, idx):
-        print("F", idx, self.tp, self.key, self.value)
-        # insert = quoted(self.key) if self.key is not None else None
-        # key = "$%d" % idx if self.key is not None else self.value
-        # value = (self.value,) if self.key is not None else ()
-
         if self.tp == self.Arg:
             # if self.key is None and insert:
             #     raise ValueError("Can't handle Arg and insert=True together")
             if self.key and "{}" in self.key:
                 insert = None
                 key = self.key.replace("{}", "$%d" % idx)
+                value = (self.value,) if self.key is not None else ()
+                idx += 1
+            elif isinstance(self.value, _Any):
+                insert = quoted(self.key)
+                key = "ANY($%d)" % idx
+                value = (self.value.value,)
+                idx += 1
             else:
                 insert = quoted(self.key) if self.key is not None else None
                 key = "$%d" % idx if self.key is not None else self.value
-
-            value = (self.value,) if self.key is not None else ()
-            idx += 1
+                value = (self.value,) if self.key is not None else ()
+                idx += 1
 
             res = insert, key, value, idx
         elif self.tp == self.Kwarg:
             insert = quoted(self.key) if self.key is not None else None
-            if isinstance(self.value, QSafe):
+            if isinstance(self.value, _Unsafe):
                 key = str(self.value)
                 value = ()
+            elif isinstance(self.value, _Any):
+                key = "ANY($%d)" % idx
+                value = (self.value.value,)
+                idx += 1
             else:
                 key = "$%d" % idx if self.key is not None else self.value
                 value = (self.value,) if self.key is not None else ()
@@ -57,7 +75,7 @@ class Expr:
 
             res = insert, key, value, idx
 
-        print(res)
+        # print(res)
         return res
 
     def __repr__(self):
@@ -65,6 +83,9 @@ class Expr:
 
 
 class Q:
+    Unsafe = _Unsafe
+    Any = _Any
+
     _M_SELECT = "SELECT"
     _M_INSERT = "INSERT"
 
@@ -93,6 +114,7 @@ class Q:
         self.update_fields = None
         self._WHERE = []
         self._SET = []
+        self._ORDER = []
 
     def FROM(self, table):
         self._FROM = table
@@ -118,7 +140,11 @@ class Q:
             self._SET.append(Expr(Expr.Kwarg, key, value))
         return self
 
-    def END(self, debug_print=True):
+    def ORDER(self, field, order=1):
+        self._ORDER.append((field, order))
+        return self
+
+    def END(self, debug_print=False):
         q = ""
         q_args = ()
         idx = 1
@@ -165,18 +191,26 @@ class Q:
             q += " " + " AND ".join(where_fields)
             q_args += where_args
 
+        if self._ORDER:
+            order_fields = []
+            for (field, order) in self._ORDER:
+                order_fields.append(quoted(field) + (" DESC" if order == -1 else ""))
+            q += " ORDER BY " + ", ".join(order_fields)
+
         if debug_print:
             print('Q: %s; %s' % (q, q_args))
 
         return q, q_args
 
 
-if __name__ == "__main__":
+def test_q():
     assert Expr(Expr.Arg, "a", 5).format(1) == ('"a"', "$1", (5,), 2)
     assert Expr(Expr.Arg, None, 'a!=5').format(1) == (None, 'a!=5', (), 2)
     assert Expr(Expr.Arg, "a=ANY({})", [2, 4]).format(1) == (None, 'a=ANY($1)', ([2, 4],), 2)
     assert Expr(Expr.Arg, "a<={}", 3).format(1) == (None, 'a<=$1', (3,), 2)
+    assert Expr(Expr.Arg, "a", Q.Any([1])).format(1) == ('"a"', "ANY($1)", ([1],), 2)
     assert Expr(Expr.Kwarg, "a", 5).format(1) == ('"a"', "$1", (5,), 2)
+    assert Expr(Expr.Kwarg, "a", Q.Any([1])).format(1) == ('"a"', "ANY($1)", ([1],), 2)
 
     assert Q.SELECT().FROM("foo").WHERE(a=5).END() == ('SELECT * FROM "foo" WHERE "a"=$1', (5,))
     assert Q.SELECT().FROM("foo").WHERE("a!=5").END() == ('SELECT * FROM "foo" WHERE a!=5', ())
@@ -187,7 +221,13 @@ if __name__ == "__main__":
     assert Q.SELECT("boo").FROM("foo").WHERE("a=5").END() == ('SELECT "boo" FROM "foo" WHERE a=5', ())
 
     assert Q.INSERT("foo").SET(a=5).END() == ('INSERT INTO "foo" ("a") VALUES ($1)', (5,))
-    assert Q.INSERT("foo").SET(q=QSafe("4"), w=QSafe("now()"), a=5).END() == ('INSERT INTO "foo" ("q", "w", "a") VALUES (4, now(), $1)', (5,))
+    assert Q.INSERT("foo").SET(q=Q.Unsafe("4"), w=Q.Unsafe("now()"), a=5).END() == ('INSERT INTO "foo" ("q", "w", "a") VALUES (4, now(), $1)', (5,))
 
-    # Tests based on preserved order of kwargs is valid on Python 3.6> only
+    assert Q.SELECT().FROM("foo").ORDER("b").END() == ('SELECT * FROM "foo" ORDER BY "b"', ())
+    assert Q.SELECT().FROM("foo").ORDER("b", -1).END() == ('SELECT * FROM "foo" ORDER BY "b" DESC', ())\
+
+    # Tests based on preserved order of kwargs are valid on Python 3.6+ only
     assert Q.INSERT("foo").SET(a=5, b=7).END() == ('INSERT INTO "foo" ("a", "b") VALUES ($1, $2)', (5, 7))
+
+if __name__ == "__main__":
+    test_q()

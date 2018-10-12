@@ -6,3 +6,10 @@ class User:
         self.user_id = user_id
 
 
+class Table:
+    def __init__(self, primary_key):
+        self.primary_key = primary_key
+
+        self.before_update = {}
+
+

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from groza import User
 from groza.postgres import PostgresDB
-from groza.q import Q, QSafe
+from groza.q import Q
 
 SECRET_KEY = ";!FC,gvn58QUHok}ZKb]23.iXE<01?MkRVz-YL>T:iU6tlS89'yWaY&b_NE?5xsM"
 
@@ -75,8 +75,8 @@ class Groza:
                 lastUpdatedBy=auth["userId"],
                 userLoginId=auth["userLoginId"],
                 userId=auth["userId"],
-                timeCreated=QSafe("now()"),
-                timeLastAccess=QSafe("now()"),
+                timeCreated=Q.Unsafe("now()"),
+                timeLastAccess=Q.Unsafe("now()"),
                 validUntil=valid_until,
                 token=token,
                 data=json.dumps(add_data),
@@ -117,9 +117,7 @@ class Groza:
 
             sub_table = self.tables[table]
 
-            query = f"SELECT * FROM {table}"
-            args = ()
-            idx = 1
+            q = Q.SELECT().FROM(table)
 
             primary_key_field = sub_table[0]
 
@@ -138,11 +136,17 @@ class Groza:
 
                 link_field = link_field[0]
 
-                query += f' WHERE "{link_field}" = ANY(${idx})'
-                args += (sub_resp[sub_desc_from]["ids"],)
-                idx += 1
+                q.WHERE(link_field, Q.Any(sub_resp[sub_desc_from]["ids"]))
 
-            items = list(await self.db.fetch(query, *args))
+            if sub_desc.get("where"):
+                for field, value in sub_desc["where"].items():
+                    q.WHERE(field, value)
+
+            if sub_desc.get("order"):
+                for field, order in sub_desc["order"]:
+                    q.ORDER(field, order)
+
+            items = list(await self.db.fetch(q))
 
             add_data = {item[primary_key_field]: dict(item) for item in items}
 
