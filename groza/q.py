@@ -40,8 +40,6 @@ class Expr:
 
     def format(self, idx):
         if self.tp == self.Arg:
-            # if self.key is None and insert:
-            #     raise ValueError("Can't handle Arg and insert=True together")
             if self.key and "{}" in self.key:
                 insert = None
                 key = self.key.replace("{}", "$%d" % idx)
@@ -115,6 +113,7 @@ class Q:
         self._WHERE = []
         self._SET = []
         self._ORDER = []
+        self._RETURNING = []
 
     def FROM(self, table):
         self._FROM = table
@@ -142,6 +141,10 @@ class Q:
 
     def ORDER(self, field, order=1):
         self._ORDER.append((field, order))
+        return self
+
+    def RETURNING(self, *args):
+        self._RETURNING.extend(args)
         return self
 
     def END(self, debug_print=False):
@@ -197,6 +200,9 @@ class Q:
                 order_fields.append(quoted(field) + (" DESC" if order == -1 else ""))
             q += " ORDER BY " + ", ".join(order_fields)
 
+        if self._RETURNING:
+            q += " RETURNING " + ", ".join(quoted(f) if f != "*" else f for f in self._RETURNING)
+
         if debug_print:
             print('Q: %s; %s' % (q, q_args))
 
@@ -224,7 +230,9 @@ def test_q():
     assert Q.INSERT("foo").SET(q=Q.Unsafe("4"), w=Q.Unsafe("now()"), a=5).END() == ('INSERT INTO "foo" ("q", "w", "a") VALUES (4, now(), $1)', (5,))
 
     assert Q.SELECT().FROM("foo").ORDER("b").END() == ('SELECT * FROM "foo" ORDER BY "b"', ())
-    assert Q.SELECT().FROM("foo").ORDER("b", -1).END() == ('SELECT * FROM "foo" ORDER BY "b" DESC', ())\
+    assert Q.SELECT().FROM("foo").ORDER("b", -1).END() == ('SELECT * FROM "foo" ORDER BY "b" DESC', ())
+
+    assert Q.INSERT("foo").SET(a=5).RETURNING("a").END() == ('INSERT INTO "foo" ("a") VALUES ($1) RETURNING "a"', (5,))
 
     # Tests based on preserved order of kwargs are valid on Python 3.6+ only
     assert Q.INSERT("foo").SET(a=5, b=7).END() == ('INSERT INTO "foo" ("a", "b") VALUES ($1, $2)', (5, 7))

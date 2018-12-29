@@ -20,17 +20,6 @@ def hashit(passw):
     return m.hexdigest()
 
 
-def parse_subscription(sub: str):
-    ind = sub.rfind("_")
-    if ind == -1:
-        table = sub
-        key = None
-    else:
-        table = sub[:ind]
-        key = int(sub[ind + 1:])
-    return table, key
-
-
 class Table:
     def __init__(self, table, primary_key, foreign=None):
         self.table = table
@@ -40,12 +29,72 @@ class Table:
 
 
 class Groza:
-    def __init__(self, tables, db: PostgresDB):
+    def __init__(self, tables, connectors):
         self.tables = tables
-        self.db = db
+        self.connectors = connectors
+        self.main_db = connectors.request()
+        self.data_dbname = None
+        self.data_db: PostgresDB = None
 
-    async def start(self):
-        await self.start_tables()
+    # async def start(self):
+    #     await self.start_tables()
+
+    async def setup_data_db(self, dbname):
+        self.data_dbname = dbname
+        company = await self.main_db.fetchrow('SELECT "companyId" FROM companies WHERE slug=$1', dbname)
+        name = "c_%d" % company["companyId"]
+        self.data_db = self.connectors.request(name)
+        await self.data_db.connect()
+
+    async def register(self, user, register):
+        method = register["method"]
+        if method == "password":
+            email = register.get("data", {}).get("email")
+            if not email:
+                raise ValueError("Email can't be empty")
+            password = register.get("data", {}).get("password")
+            if not password:
+                raise ValueError("Password can't be empty")
+
+            q = Q.INSERT("users").SET(
+                lastUpdatedBy=-1,
+                timeCreated=Q.Unsafe("now()"),
+                timeUpdated=Q.Unsafe("now()"),
+            ).RETURNING("userId")
+            user = await self.main_db.fetchrow(q)
+
+            passhash = hashit(password)
+            q = Q.INSERT("users_logins").SET(
+                lastUpdatedBy=user["userId"],
+                userId=user["userId"],
+                timeCreated=Q.Unsafe("now()"),
+                type=method,
+                main=email,
+                secondary=passhash,
+            ).RETURNING("*")
+            auth = await self.main_db.fetchrow(q)
+
+            valid_until = datetime.now() + timedelta(days=1)
+            token = "abdasdas"
+
+            device = register.get("device", {})
+            add_data = {
+                "device": device,
+            }
+
+            q = Q.INSERT("users_auths").SET(
+                lastUpdatedBy=auth["userId"],
+                userLoginId=auth["userLoginId"],
+                userId=auth["userId"],
+                timeCreated=Q.Unsafe("now()"),
+                timeLastAccess=Q.Unsafe("now()"),
+                validUntil=valid_until,
+                token=token,
+                data=json.dumps(add_data),
+            )
+            await self.main_db.fetchrow(q)
+
+            return {"status": "ok", "token": token, "userId": auth["userId"], "type": "login"}
 
     async def login(self, user, login):
         method = login["method"]
@@ -58,7 +107,7 @@ class Groza:
                 raise ValueError("Password can't be empty")
 
             passhash = hashit(password)
-            auth = await self.db.fetchrow("""
+            auth = await self.main_db.fetchrow("""
                 SELECT * FROM users_logins WHERE type=$1 AND main=$2 AND secondary=$3
             """, method, email, passhash)
             if not auth:
@@ -81,21 +130,24 @@ class Groza:
                 token=token,
                 data=json.dumps(add_data),
             )
-            # await self.db.execute(q)
+            await self.main_db.execute(q)
 
             return {"status": "ok", "token": token, "userId": auth["userId"], "type": "login"}
 
         return {"status": "error", "code": 1}
 
     async def auth(self, user, token):
-        auth = await self.db.fetchrow("""
+        auth = await self.main_db.fetchrow("""
             SELECT "userId", "validUntil" FROM users_auths WHERE token=$1
         """, token)
+
+        if not auth:
+            return {"status": "error", "message": "Token expired", "code": 2}
 
         if auth["validUntil"] < datetime.now():
             return {"status": "error", "message": "Token expired", "code": 3}
 
-        await self.db.execute("""
+        await self.main_db.execute("""
             UPDATE users_auths SET "timeLastAccess"=now() WHERE token=$1
         """, token)
 
@@ -121,6 +173,7 @@ class Groza:
 
             primary_key_field = sub_table[0]
 
+            link_field = None
             sub_desc_from = sub_desc.get("fromSub")
             if sub_desc_from is not None:
                 if sub_desc_from not in sub_resp:
@@ -143,10 +196,13 @@ class Groza:
                     q.WHERE(field, value)
 
             if sub_desc.get("order"):
-                for field, order in sub_desc["order"]:
+                for field, order in sub_desc["order"].items():
                     q.ORDER(field, order)
 
-            items = list(await self.db.fetch(q))
+            db = self.data_db
+            if table == "users":
+                db = self.main_db
+            items = list(await db.fetch(q))
 
             add_data = {item[primary_key_field]: dict(item) for item in items}
 
@@ -177,26 +233,21 @@ class Groza:
 
                 ids.append(item[primary_key_field])
 
-            if sub_desc.get("inject"):
-                inject_to = {}
-                for iid in ids:
-                    item = add_data[iid]
-                    inject_to.setdefault(item[link_field], [])
-                    inject_to[item[link_field]].append(item[primary_key_field])
+            from_sub = {}
+            if sub_desc_from is not None:
+                for key, item in add_data.items():
+                    lf = item[link_field]
 
-                for key in data[link_table].keys():
-                    assert sub_desc["inject"] not in data[link_table][key]
-                    data[link_table][key][sub_desc["inject"]] = []
-
-                for inj, values in inject_to.items():
-                    data[link_table][inj][sub_desc["inject"]] = values
-                    data[link_table][inj][sub_desc["inject"] + "Table"] = table
+                    from_sub.setdefault(lf, [])
+                    from_sub[lf].append(item[primary_key_field])
 
             sub_resp[sub] = {
                 "status": "ok",
                 "dataField": table,
                 "ids": ids,
             }
+
+            sub_resp[sub]["fromSub"] = from_sub
 
         resp["type"] = "data"
         resp["data"] = data
@@ -240,7 +291,7 @@ class Groza:
         primary_key = desc[0]
 
         query = f'INSERT INTO {table} ({own_fields_str}) VALUES ({own_values_str}) RETURNING "{primary_key}"'
-        result = await self.db.fetchrow(query, *args)
+        result = await self.data_db.fetchrow(query, *args)
         if not result:
             return {"status": "error", "message": "No result"}
 
@@ -252,7 +303,7 @@ class Groza:
             if table not in self.tables:
                 return {"errors": [f"Table '{table}' in #{cnt} row is not handled"]}
 
-        async with self.db.pool.acquire() as conn:
+        async with self.data_db.pool.acquire() as conn:
             async with conn.transaction():
                 for cnt, (query, upd) in enumerate(update):
                     table = query["table"]
@@ -288,9 +339,9 @@ class Groza:
         audit_table_seq = f"{audit_table}_id_seq"
         changed_by_field = f"updatedBy"
 
-        await self.db.execute(f'CREATE SEQUENCE IF NOT EXISTS "{audit_table_seq}"')
+        await self.data_db.execute(f'CREATE SEQUENCE IF NOT EXISTS "{audit_table_seq}"')
 
-        await self.db.execute(f"""
+        await self.data_db.execute(f"""
             CREATE TABLE IF NOT EXISTS "{audit_table}" (
                 "audit_id" int8 PRIMARY KEY,
                 "{changed_by_field}" int8 NOT NULL,
@@ -320,7 +371,10 @@ class Groza:
             use_int_key_new = f'NEW."{primary_key_field}"' if True else 'NULL'
             use_var_key_new = f'NEW."{primary_key_field}"' if False else 'NULL'
 
-            await self.db.execute(f"""
+            dbname = self.data_dbname
+            data_table = f"{dbname}.{table}"
+
+            await self.data_db.execute(f"""
                 CREATE OR REPLACE FUNCTION "{audit_table_func}"() RETURNS TRIGGER AS 
                 $$ 
                 DECLARE 
@@ -331,7 +385,7 @@ class Groza:
                 BEGIN 
                   IF (TG_OP = 'DELETE') THEN
                     INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), OLD."{last_updated_by_field}", {use_int_key}, now(), 'D', '{table}', {use_var_key}, hstore(OLD), hstore('');
-                    PERFORM pg_notify('{table}', OLD."{primary_key_field}"::text);
+                    PERFORM pg_notify('{data_table}', OLD."{primary_key_field}"::text);
                     RETURN OLD;
                   ELSIF (TG_OP = 'UPDATE') THEN
                     oldh = hstore(OLD);
@@ -343,23 +397,23 @@ class Groza:
                       END IF;
                     END LOOP; 
                     INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), NEW."{last_updated_by_field}", {use_int_key}, now(), 'U', '{table}', {use_var_key}, o, n;
-                    PERFORM pg_notify('{table}', NEW."{primary_key_field}"::text);
+                    PERFORM pg_notify('{data_table}', NEW."{primary_key_field}"::text);
                     RETURN NEW;
                   ELSIF (TG_OP = 'INSERT') THEN
-                     INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), NEW."{last_updated_by_field}", {use_int_key_new}, now(), 'I', '{table}', {use_var_key_new}, hstore(''), hstore(NEW);
-                     PERFORM pg_notify('{table}', NEW."{primary_key_field}"::text);
-                     RETURN NEW;
+                    INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), NEW."{last_updated_by_field}", {use_int_key_new}, now(), 'A', '{table}', {use_var_key_new}, hstore(''), hstore(NEW);
+                    PERFORM pg_notify('{data_table}', NEW."{primary_key_field}"::text);
+                    RETURN NEW;
                   END IF;
                   RETURN NULL;
                 END; 
                 $$ language plpgsql; 
             """)
 
-            await self.db.execute(f"""
+            await self.data_db.execute(f"""
                 DROP TRIGGER IF EXISTS "{audit_table_trigger}" ON "{table}"
             """)
 
-            await self.db.execute(f"""
+            await self.data_db.execute(f"""
                 CREATE TRIGGER "{audit_table_trigger}"
                     AFTER INSERT OR UPDATE OR DELETE ON "{table}"
                     FOR EACH ROW EXECUTE PROCEDURE "{audit_table_func}"()
@@ -368,16 +422,15 @@ class Groza:
 
 def test():
     async def t():
-        db = PostgresDB()
+        db = PostgresDB("ridger_dev")
         await db.connect()
 
-        boxes = "testGrozaBoxes"
-        tasks = "testGrozaTasks"
+        boxes = "test_groza_boxes"
+        tasks = "test_groza_tasks"
 
         async with db.pool.acquire() as conn:
-
-            await conn.execute(f"DROP TABLE IF EXISTS {boxes}")
-            await conn.execute(f"DROP TABLE IF EXISTS {tasks}")
+            await conn.execute(f'DROP TABLE IF EXISTS {boxes}')
+            await conn.execute(f'DROP TABLE IF EXISTS {tasks}')
 
             await conn.execute(f"""
                 CREATE TABLE {boxes} (
@@ -396,12 +449,13 @@ def test():
             """)
 
             await conn.execute(f'INSERT INTO {boxes} ("boxId", "title") VALUES ($1, $2)', 1, "First Box")
-            first_task = await conn.fetchrow(f'INSERT INTO {tasks} ("boxId", "title") VALUES ($1, $2) RETURNING "taskId"', 1, "First Task")
-            await conn.execute(f'INSERT INTO {tasks} ("boxId", "title", "parentBoxId") VALUES ($1, $2, $3)', 1, "First Sub Task", first_task["taskId"])
-            await conn.execute(f'INSERT INTO {tasks} ("boxId", "title") VALUES ($1, $2)', 1, "Second Task")
+
+            await conn.execute(f'INSERT INTO {tasks} ("taskId", "boxId", "title") VALUES ($1, $2, $3) RETURNING "taskId"', 1, 1, "First Task")
+            await conn.execute(f'INSERT INTO {tasks} ("taskId", "boxId", "title", "parentBoxId") VALUES ($1, $2, $3, $4)', 2, 1, "First Sub Task", 1)
+            await conn.execute(f'INSERT INTO {tasks} ("taskId", "boxId", "title") VALUES ($1, $2, $3)', 3, 1, "Second Task")
 
             await conn.execute(f'INSERT INTO {boxes} ("boxId", "title") VALUES ($1, $2)', 2, "Second Box")
-            await conn.execute(f'INSERT INTO {tasks} ("boxId", "title") VALUES ($1, $2)', 2, "First Task of Second Box")
+            await conn.execute(f'INSERT INTO {tasks} ("taskId", "boxId", "title") VALUES ($1, $2, $3)', 4, 2, "First Task of Second Box")
 
 
         tables = {
@@ -418,15 +472,15 @@ def test():
 
         subscription = {
             "allBoxes": {"table": boxes},
-            "boxTasks": {"table": tasks, "fromSub": "allBoxes", "inject": "taskIds", "recursive": ("parentBoxId", "childrenIds")},
+            "boxTasks": {"table": tasks, "fromSub": "allBoxes", "recursive": ("parentBoxId", "childrenIds")},
         }
 
         res = await groza.fetch_sub(User(), subscription)
 
         assert set(res["sub"]["allBoxes"]["ids"]) == {1, 2}
         assert set(res["sub"]["boxTasks"]["ids"]) == {1, 3, 4}
+        assert res["sub"]["boxTasks"]["fromSub"] == {1: [1, 2, 3], 2: [4]}
 
-        assert set(res["data"][boxes][1]["taskIds"]) == {1, 3}
         assert res["data"][tasks][1]["childrenIds"] == [2]
 
         assert res["data"][tasks][2]["childrenIds"] == []

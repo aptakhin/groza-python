@@ -28,6 +28,10 @@ class Connection:
         self.log = build_logger("WS")
         self.auth_token = None
         self.all_sub = {}
+        self.last_sub = {}
+        self.global_params = {}
+
+    # self.handler.setup_data_db(dbname)
 
     async def handle_request(self, request):
         resp = {
@@ -38,13 +42,15 @@ class Connection:
             resp.update({"status": "error", "message": "Invalid not integer counter"})
             return resp
 
-        if request.get("type") not in ("login", "sub", "auth", "update", "insert"):
+        if request.get("type") not in ("login", "sub", "auth", "register", "update", "insert"):
             return {"status": "error", "message": "Invalid type"}
 
-        handle_resp = {}
         req_type = request["type"]
         if req_type == "login":
             handle_resp = await self.handler.login(self.user, login=request.get("login"))
+            p = 0
+        elif req_type == "register":
+            handle_resp = await self.handler.register(self.user, register=request.get("register"))
             p = 0
         elif req_type == "auth":
             token = request["token"]
@@ -56,7 +62,12 @@ class Connection:
             if "sub" not in request or not isinstance(request["sub"], dict):
                 return {"status": "error", "message": "Invalid not dict sub"}
             self.all_sub = request["sub"]
+            self.global_params = request["global"]
+
+            await self.handler.setup_data_db(self.global_params["company"])
+
             handle_resp = await self.handler.fetch_sub(self.user, self.all_sub)
+            self.last_sub = handle_resp["sub"]
         elif req_type == "update":
             update = request["update"]
             handle_resp = await self.handler.query_update(self.user, update)
@@ -90,7 +101,36 @@ class Connection:
 
     async def send_sub(self):
         resp = await self.handler.fetch_sub(self.user, self.all_sub)
+        self.last_sub = resp["sub"]
         await self.send(resp)
+
+    async def notify_change(self, table, obj_id):
+        for key, data in self.last_sub.items():
+            data_table = data["dataField"]
+            # TODO: проверять связность
+            if table != data_table:
+                continue
+
+            if obj_id not in data.get("ids", []):
+                continue
+
+            await self.send_sub()
+
+            break
+
+
+class Connectors:
+    def __init__(self):
+        self.dbs = {
+            None: PostgresDB("ridger_dev"),
+        }
+
+    def request(self, connector_field=None):
+        dbs = self.dbs.get(connector_field)
+        if not dbs:
+            dbs = PostgresDB(connector_field)
+            self.dbs[connector_field] = dbs
+        return dbs
 
 
 class Server:
@@ -98,15 +138,16 @@ class Server:
         self.log = build_logger("Server")
         self.conns: List[Connection] = []
         self.queries = []
-        self.db = PostgresDB()
+        self.connectors = Connectors()
+        self.db = self.connectors.request(None)
         self.tables = {
             "boxes": ("boxId", {}),
             "tasks": ("taskId", {"boxes": ("boxId",)}),
             "users": ("userId", {}),
-            "comments": ("commentId", {}),
+            "comments": ("commentId", {"tasks": ("taskId",)}),
         }
 
-        self.handler = Groza(self.tables, self.db)
+
         self.notif_conn = None
 
         self.notifies = asyncio.Queue()
@@ -115,14 +156,17 @@ class Server:
         await self.db.connect()
         self.log.info("Started DB")
 
-        await self.handler.start()
+        # await self.handler.start()
 
         self.notif_conn = await self.db.pool.acquire()
-        await self.notif_conn.add_listener("boxes", self.notify)
-        await self.notif_conn.add_listener("tasks", self.notify)
+
+        for table in self.tables:
+            await self.notif_conn.add_listener(table, self.notify)
 
     async def ws_handler(self, ws, _):
-        conn = Connection(self.handler, ws, self.queries)
+        handler = Groza(self.tables, self.connectors)
+
+        conn = Connection(handler, ws, self.queries)
         self.conns.append(conn)
 
         self.log.debug("New connection (all: %d)" % len(self.conns))
@@ -143,9 +187,9 @@ class Server:
                 channel, obj_id = await self.notifies.get()
 
                 for conn in self.conns:
-                    await conn.send_sub()
+                    await conn.notify_change(channel, obj_id)
 
-            await asyncio.sleep(1.)
+            await asyncio.sleep(0.1)
 
 
 def parse_args():
