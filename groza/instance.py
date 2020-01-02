@@ -45,6 +45,7 @@ class Groza:
         name = "c_%d" % company["companyId"]
         self.data_db = self.connectors.request(name)
         await self.data_db.connect()
+        await self.start_tables()
 
     async def register(self, user, register):
         method = register["method"]

@@ -5,23 +5,16 @@ from groza.utils import build_logger
 
 
 class PostgresDB:
-    def __init__(self, dbname):
+    def __init__(self, dsn):
         self.log = build_logger("DB")
         self.pool: asyncpg.Pool = None
-
-        self.host = "localhost"
-        self.port = 5432
-        self.dbname = dbname
-        self.ssl = False
-        self.user = "ridger"
-        self.password = "ridger"
+        self.dsn = dsn
 
     async def connect(self):
         if self.pool:
             return
 
-        self.pool = await asyncpg.create_pool(host=self.host, port=self.port, database=self.dbname, ssl=self.ssl,
-                                              user=self.user, password=self.password)
+        self.pool = await asyncpg.create_pool(dsn=self.dsn)
 
     async def execute(self, query, *args):
         if isinstance(query, Q):

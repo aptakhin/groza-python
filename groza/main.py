@@ -6,6 +6,7 @@ from collections import OrderedDict
 from typing import List
 
 import websockets
+from aiohttp import web
 
 from groza import User
 from groza.postgres import PostgresDB
@@ -120,9 +121,10 @@ class Connection:
 
 
 class Connectors:
-    def __init__(self):
+    def __init__(self, db_dsn):
+        self.db_dsn = db_dsn
         self.dbs = {
-            None: PostgresDB("ridger_dev"),
+            None: PostgresDB(self.db_dsn),
         }
 
     def request(self, connector_field=None):
@@ -134,19 +136,14 @@ class Connectors:
 
 
 class Server:
-    def __init__(self):
+    def __init__(self, tables, db_dsn):
         self.log = build_logger("Server")
         self.conns: List[Connection] = []
         self.queries = []
-        self.connectors = Connectors()
+        self.db_dsn = db_dsn
+        self.connectors = Connectors(db_dsn)
         self.db = self.connectors.request(None)
-        self.tables = {
-            "boxes": ("boxId", {}),
-            "tasks": ("taskId", {"boxes": ("boxId",)}),
-            "users": ("userId", {}),
-            "comments": ("commentId", {"tasks": ("taskId",)}),
-        }
-
+        self.tables = tables
 
         self.notif_conn = None
 
@@ -163,7 +160,10 @@ class Server:
         for table in self.tables:
             await self.notif_conn.add_listener(table, self.notify)
 
-    async def ws_handler(self, ws, _):
+    async def ws_handler(self, request):
+        ws = web.WebSocketResponse()
+        await ws.prepare(request)
+
         handler = Groza(self.tables, self.connectors)
 
         conn = Connection(handler, ws, self.queries)
@@ -175,6 +175,8 @@ class Server:
             await conn.handle()
         finally:
             self.conns.remove(conn)
+
+        return ws
 
     def notify(self, conn, pid, channel, message):
         obj_id = int(message)
@@ -201,20 +203,20 @@ def parse_args():
     return args
 
 
-def main():
-    args = parse_args()
-
-    init_file_loggers(filename="groza.log", names=["Server", "WS", "DB"])
-    server = Server()
-    asyncio.get_event_loop().run_until_complete(server.start())
-
-    start_server = websockets.serve(server.ws_handler, args.host, args.port, create_protocol=ServerProtocol)
-    log = build_logger("Server")
-
-    # log.info("Running on %s:%d", args.host, args.port)
-    asyncio.get_event_loop().run_until_complete(asyncio.gather(start_server, server.loop()))
-    asyncio.get_event_loop().run_forever()
-
-
-if __name__ == "__main__":
-    main()
+# def main():
+#     args = parse_args()
+#
+#     init_file_loggers(filename="groza.log", names=["Server", "WS", "DB"])
+#     server = Server()
+#     asyncio.get_event_loop().run_until_complete(server.start())
+#
+#     start_server = websockets.serve(server.ws_handler, args.host, args.port, create_protocol=ServerProtocol)
+#     log = build_logger("Server")
+#
+#     # log.info("Running on %s:%d", args.host, args.port)
+#     asyncio.get_event_loop().run_until_complete(asyncio.gather(start_server, server.loop()))
+#     asyncio.get_event_loop().run_forever()
+#
+#
+# if __name__ == "__main__":
+#     main()

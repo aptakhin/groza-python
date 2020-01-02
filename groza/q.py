@@ -237,5 +237,6 @@ def test_q():
     # Tests based on preserved order of kwargs are valid on Python 3.6+ only
     assert Q.INSERT("foo").SET(a=5, b=7).END() == ('INSERT INTO "foo" ("a", "b") VALUES ($1, $2)', (5, 7))
 
+
 if __name__ == "__main__":
     test_q()
