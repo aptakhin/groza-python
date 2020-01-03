@@ -2,8 +2,11 @@ import asyncio
 import hashlib
 import json
 from datetime import datetime, timedelta
+from uuid import UUID
 
-from groza import User
+from groza import User, GrozaRequest, GrozaResponse
+from groza.auth import BaseAuth
+from groza.auth.debug import DebugAuth
 from groza.postgres import PostgresDB
 from groza.q import Q
 
@@ -34,126 +37,37 @@ class Groza:
         self.connectors = connectors
         self.main_db = connectors.request()
         self.data_dbname = None
-        self.data_db: PostgresDB = None
+        self.data_db: PostgresDB = self.main_db
+        self._auth = DebugAuth()
 
     # async def start(self):
     #     await self.start_tables()
 
+    # @property
+    # def auth(self) -> BaseAuth:
+    #     return self._auth
+
     async def setup_data_db(self, dbname):
         self.data_dbname = dbname
-        company = await self.main_db.fetchrow('SELECT "companyId" FROM companies WHERE slug=$1', dbname)
-        name = "c_%d" % company["companyId"]
-        self.data_db = self.connectors.request(name)
-        await self.data_db.connect()
+        # company = await self.main_db.fetchrow('SELECT "companyId" FROM companies WHERE slug=$1', dbname)
+        # name = "c_%d" % company["companyId"]
+        self.data_db = self.connectors.request(None)
+        # await self.data_db.connect()
         await self.start_tables()
 
-    async def register(self, user, register):
-        method = register["method"]
-        if method == "password":
-            email = register.get("data", {}).get("email")
-            if not email:
-                raise ValueError("Email can't be empty")
-            password = register.get("data", {}).get("password")
-            if not password:
-                raise ValueError("Password can't be empty")
+    async def register(self, request: GrozaRequest) -> GrozaResponse:
+        user = self._auth.register(request)
 
-            q = Q.INSERT("users").SET(
-                lastUpdatedBy=-1,
-                timeCreated=Q.Unsafe("now()"),
-                timeUpdated=Q.Unsafe("now()"),
-            ).RETURNING("userId")
-            user = await self.main_db.fetchrow(q)
+        return GrozaResponse({}, request=request)
+        # return {"status": "ok", "token": token, "userId": auth["userId"], "type": "register"}
 
-            passhash = hashit(password)
-            q = Q.INSERT("users_logins").SET(
-                lastUpdatedBy=user["userId"],
-                userId=user["userId"],
-                timeCreated=Q.Unsafe("now()"),
-                type=method,
-                main=email,
-                secondary=passhash,
-            ).RETURNING("*")
-            auth = await self.main_db.fetchrow(q)
+    async def login(self, request: GrozaRequest) -> GrozaResponse:
+        user = self._auth.login(request)
+        return GrozaResponse({}, request=request)
 
-            valid_until = datetime.now() + timedelta(days=1)
-            token = "abdasdas"
-
-            device = register.get("device", {})
-            add_data = {
-                "device": device,
-            }
-
-            q = Q.INSERT("users_auths").SET(
-                lastUpdatedBy=auth["userId"],
-                userLoginId=auth["userLoginId"],
-                userId=auth["userId"],
-                timeCreated=Q.Unsafe("now()"),
-                timeLastAccess=Q.Unsafe("now()"),
-                validUntil=valid_until,
-                token=token,
-                data=json.dumps(add_data),
-            )
-            await self.main_db.fetchrow(q)
-
-            return {"status": "ok", "token": token, "userId": auth["userId"], "type": "login"}
-
-    async def login(self, user, login):
-        method = login["method"]
-        if method == "password":
-            email = login.get("data", {}).get("email")
-            if not email:
-                raise ValueError("Password can't be empty")
-            password = login.get("data", {}).get("password")
-            if not password:
-                raise ValueError("Password can't be empty")
-
-            passhash = hashit(password)
-            auth = await self.main_db.fetchrow("""
-                SELECT * FROM users_logins WHERE type=$1 AND main=$2 AND secondary=$3
-            """, method, email, passhash)
-            if not auth:
-                return {"status": "error", "code": 2, "message": "Can't find email/password pair"}
-
-            valid_until = datetime.now() + timedelta(days=1)
-            token = "abdasdas"
-
-            device = login.get("device", {})
-            add_data = {
-                "device": device,
-            }
-            q = Q.INSERT("users_auths").SET(
-                lastUpdatedBy=auth["userId"],
-                userLoginId=auth["userLoginId"],
-                userId=auth["userId"],
-                timeCreated=Q.Unsafe("now()"),
-                timeLastAccess=Q.Unsafe("now()"),
-                validUntil=valid_until,
-                token=token,
-                data=json.dumps(add_data),
-            )
-            await self.main_db.execute(q)
-
-            return {"status": "ok", "token": token, "userId": auth["userId"], "type": "login"}
-
-        return {"status": "error", "code": 1}
-
-    async def auth(self, user, token):
-        auth = await self.main_db.fetchrow("""
-            SELECT "userId", "validUntil" FROM users_auths WHERE token=$1
-        """, token)
-
-        if not auth:
-            return {"status": "error", "message": "Token expired", "code": 2}
-
-        if auth["validUntil"] < datetime.now():
-            return {"status": "error", "message": "Token expired", "code": 3}
-
-        await self.main_db.execute("""
-            UPDATE users_auths SET "timeLastAccess"=now() WHERE token=$1
-        """, token)
-
-        return {"status": "ok", "type": "auth", "userId": auth["userId"]}
-
+    async def auth(self, request: GrozaRequest) -> GrozaResponse:
+        # user = self.auth.register(request)
+        return GrozaResponse({}, request=request)
 
     async def fetch_sub(self, user, all_sub):
         resp = {}
@@ -205,7 +119,12 @@ class Groza:
                 db = self.main_db
             items = list(await db.fetch(q))
 
-            add_data = {item[primary_key_field]: dict(item) for item in items}
+            def make_key(key):
+                if isinstance(key, UUID):
+                    key = str(key)
+                return key
+
+            add_data = {make_key(item[primary_key_field]): dict(item) for item in items}
 
             # if table == "tasks":
             #     for i in range(200, 1200):
@@ -257,7 +176,7 @@ class Groza:
         if errors:
             resp["errors"] = errors
 
-        return resp
+        return GrozaResponse(resp)
 
     async def query_insert(self, user, query, insert):
         resp = {}
@@ -281,10 +200,10 @@ class Groza:
             args += (value,)
             idx += 1
 
-        own_fields.append('"lastUpdatedBy"')
-        own_values.append(f"${idx}")
-        args += (user.user_id,)
-        idx += 1
+        # own_fields.append('"lastUpdatedBy"')
+        # own_values.append(f"${idx}")
+        # args += (user.user_id,)
+        # idx += 1
 
         own_fields_str = ", ".join(own_fields)
         own_values_str = ", ".join(own_values)
@@ -296,7 +215,7 @@ class Groza:
         if not result:
             return {"status": "error", "message": "No result"}
 
-        return {"status": "ok", primary_key: result[primary_key]}
+        return GrozaResponse({"status": "ok", primary_key: result[primary_key]})
 
     async def query_update(self, user, update):
         for cnt, (query, upd) in enumerate(update):
@@ -318,9 +237,9 @@ class Groza:
                         args += (value,)
                         idx += 1
 
-                    fields.append(f'"lastUpdatedBy" = ${idx}')
-                    args += (user.user_id,)
-                    idx += 1
+                    # fields.append(f'"lastUpdatedBy" = ${idx}')
+                    # args += (user.user_id,)
+                    # idx += 1
 
                     value_fields = ", ".join(fields)
 
@@ -333,7 +252,7 @@ class Groza:
                     query_str = f'UPDATE {table} SET {value_fields} WHERE "{primary_key_field}" = ${primary_key_idx}'
                     await conn.execute(query_str, *args)
 
-        return {"status": "ok"}
+        return GrozaResponse({"status": "ok"})
 
     async def start_tables(self):
         audit_table = "groza_audit"

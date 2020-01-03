@@ -8,7 +8,7 @@ from typing import List
 import websockets
 from aiohttp import web
 
-from groza import User
+from groza import User, GrozaRequest
 from groza.postgres import PostgresDB
 from groza.instance import Groza
 from groza.utils import build_logger, init_file_loggers, json_serial
@@ -46,29 +46,31 @@ class Connection:
         if request.get("type") not in ("login", "sub", "auth", "register", "update", "insert"):
             return {"status": "error", "message": "Invalid type"}
 
+        push_request = GrozaRequest(request)
+
         req_type = request["type"]
         if req_type == "login":
-            handle_resp = await self.handler.login(self.user, login=request.get("login"))
+            handle_resp = await self.handler.login(push_request)
             p = 0
         elif req_type == "register":
-            handle_resp = await self.handler.register(self.user, register=request.get("register"))
+            handle_resp = await self.handler.register(push_request)
             p = 0
         elif req_type == "auth":
             token = request["token"]
-            handle_resp = await self.handler.auth(self.user, token=token)
-            if handle_resp["status"] == "ok":
+            handle_resp = await self.handler.auth(push_request)
+            if handle_resp.data.get("status") == "ok":
                 self.user.auth_token = token
-                self.user.user_id = handle_resp["userId"]
+                self.user.user_id = handle_resp.data["userId"]
         elif req_type == "sub":
             if "sub" not in request or not isinstance(request["sub"], dict):
                 return {"status": "error", "message": "Invalid not dict sub"}
             self.all_sub = request["sub"]
-            self.global_params = request["global"]
+            # self.global_params = request["global"]
 
-            await self.handler.setup_data_db(self.global_params["company"])
+            # await self.handler.setup_data_db(self.global_params["company"])
 
             handle_resp = await self.handler.fetch_sub(self.user, self.all_sub)
-            self.last_sub = handle_resp["sub"]
+            self.last_sub = handle_resp.data["sub"]
         elif req_type == "update":
             update = request["update"]
             handle_resp = await self.handler.query_update(self.user, update)
@@ -79,7 +81,7 @@ class Connection:
         else:
             raise RuntimeError("Unhandled type %s" % req_type)
 
-        resp.update(handle_resp)
+        resp.update(handle_resp.data)
 
         return resp
 
@@ -87,18 +89,18 @@ class Connection:
         async for message in self.ws:
             try:
                 self.log.debug(f"Req : {message}")
-                request = json.loads(message, object_pairs_hook=OrderedDict)
+                request = json.loads(message.data, object_pairs_hook=OrderedDict)
 
                 handler_resp = await self.handle_request(request)
 
                 await self.send(handler_resp)
             except:
-                self.log.exception("Exception handling message: %s" % message)
+                self.log.exception("Exception handling message: %s" % message.data)
 
     async def send(self, resp):
         js = json.dumps(resp, default=json_serial)
         self.log.debug("Resp: %s" % js)
-        await self.ws.send(js)
+        await self.ws.send_str(js)
 
     async def send_sub(self):
         resp = await self.handler.fetch_sub(self.user, self.all_sub)

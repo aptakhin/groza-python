@@ -1,12 +1,22 @@
 import logging
 import logging.handlers
 
-from datetime import datetime, date
+from datetime import datetime, date, timezone
+from uuid import UUID
 
 
 def json_serial(obj):
-    if isinstance(obj, (datetime, date)):
-        serial = obj.isoformat()
+    if isinstance(obj, datetime):
+        serial = obj.replace(tzinfo=timezone.utc).timestamp()
+        return int(serial)
+
+    if isinstance(obj, date):
+        DAY = 24 * 60 * 60  # POSIX day in seconds (exact value)
+        timestamp = (obj - date(1970, 1, 1)).days * DAY
+        return timestamp
+
+    if isinstance(obj, UUID):
+        serial = str(obj)
         return serial
 
     raise TypeError("Type %s not serializable" % type(obj))

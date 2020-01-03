@@ -13,3 +13,16 @@ class Table:
         self.before_update = {}
 
 
+class GrozaRequest:
+    def __init__(self, data):
+        self._data = data
+
+
+class GrozaResponse:
+    def __init__(self, data, request=None):
+        self._data = data
+        self._request = request
+
+    @property
+    def data(self):
+        return self._data
