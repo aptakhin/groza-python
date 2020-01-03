@@ -104,8 +104,8 @@ class Connection:
 
     async def send_sub(self):
         resp = await self.handler.fetch_sub(self.user, self.all_sub)
-        self.last_sub = resp["sub"]
-        await self.send(resp)
+        self.last_sub = resp.data["sub"]
+        await self.send(resp.data)
 
     async def notify_change(self, table, obj_id):
         for key, data in self.last_sub.items():
@@ -155,8 +155,6 @@ class Server:
         await self.db.connect()
         self.log.info("Started DB")
 
-        # await self.handler.start()
-
         self.notif_conn = await self.db.pool.acquire()
 
         for table in self.tables:
@@ -181,7 +179,7 @@ class Server:
         return ws
 
     def notify(self, conn, pid, channel, message):
-        obj_id = int(message)
+        obj_id = message
         self.notifies.put_nowait((channel, obj_id))
 
     async def loop(self):
@@ -193,32 +191,91 @@ class Server:
                 for conn in self.conns:
                     await conn.notify_change(channel, obj_id)
 
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.3)
 
+    async def add_loop(self, app):
+        app['db_notif_listener'] = asyncio.create_task(self.loop())
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default="localhost")
-    parser.add_argument("--port", type=int, default=7700)
+    async def start_tables(self):
+        audit_table = "groza_audit"
+        audit_table_seq = f"{audit_table}_id_seq"
+        changed_by_field = f"updatedBy"
 
-    args = parser.parse_args()
-    return args
+        await self.db.execute(f'CREATE SEQUENCE IF NOT EXISTS "{audit_table_seq}"')
 
+        await self.db.execute(f"""
+            CREATE TABLE IF NOT EXISTS "{audit_table}" (
+                "audit_id" int8 PRIMARY KEY,
+                "{changed_by_field}" int8 NOT NULL,
+                "int_key" int8,
+                "time" timestamp NOT NULL,
+                "operation" bpchar NOT NULL,
+                "table" varchar NOT NULL,
+                "var_key" varchar,
+                "o" hstore,
+                "n" hstore
+            );
+        """)
 
-# def main():
-#     args = parse_args()
-#
-#     init_file_loggers(filename="groza.log", names=["Server", "WS", "DB"])
-#     server = Server()
-#     asyncio.get_event_loop().run_until_complete(server.start())
-#
-#     start_server = websockets.serve(server.ws_handler, args.host, args.port, create_protocol=ServerProtocol)
-#     log = build_logger("Server")
-#
-#     # log.info("Running on %s:%d", args.host, args.port)
-#     asyncio.get_event_loop().run_until_complete(asyncio.gather(start_server, server.loop()))
-#     asyncio.get_event_loop().run_forever()
-#
-#
-# if __name__ == "__main__":
-#     main()
+        for table, table_desc in self.tables.items():
+            lower_table = table.lower()
+            audit_prefix_table = f"{lower_table}_audit"
+            audit_table_func = f"{audit_prefix_table}_func"
+            audit_table_trigger = f"{audit_prefix_table}_trigger"
+
+            last_updated_by_field = f"lastUpdatedBy"
+
+            primary_key_field = table_desc[0]
+
+            use_int_key = f'OLD."{primary_key_field}"' if False else 'NULL'
+            use_var_key = f'OLD."{primary_key_field}"' if True else 'NULL'
+
+            use_int_key_new = f'NEW."{primary_key_field}"' if False else 'NULL'
+            use_var_key_new = f'NEW."{primary_key_field}"' if True else 'NULL'
+
+            data_table = f"{table}"
+
+            await self.db.execute(f"""
+                CREATE OR REPLACE FUNCTION "{audit_table_func}"() RETURNS TRIGGER AS 
+                $$ 
+                DECLARE 
+                  r record;
+                  oldh hstore;
+                  o hstore := hstore('');
+                  n hstore := hstore('');
+                BEGIN 
+                  IF (TG_OP = 'DELETE') THEN
+                    INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), OLD."{last_updated_by_field}", {use_int_key}, now(), 'D', '{table}', {use_var_key}, hstore(OLD), hstore('');
+                    PERFORM pg_notify('{data_table}', OLD."{primary_key_field}"::text);
+                    RETURN OLD;
+                  ELSIF (TG_OP = 'UPDATE') THEN
+                    oldh = hstore(OLD);
+                    FOR r IN SELECT * FROM EACH(hstore(NEW)) 
+                    LOOP 
+                      IF (oldh->r.key != r.value) THEN 
+                        o = o || ('"' || r.key || '" => "' || (oldh->r.key) || '"')::hstore;
+                        n = n || ('"' || r.key || '" => "' || r.value || '"')::hstore;
+                      END IF;
+                    END LOOP; 
+                    INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), NEW."{last_updated_by_field}", {use_int_key}, now(), 'U', '{table}', {use_var_key}, o, n;
+                    PERFORM pg_notify('{data_table}', NEW."{primary_key_field}"::text);
+                    RETURN NEW;
+                  ELSIF (TG_OP = 'INSERT') THEN
+                    INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), NEW."{last_updated_by_field}", {use_int_key_new}, now(), 'A', '{table}', {use_var_key_new}, hstore(''), hstore(NEW);
+                    PERFORM pg_notify('{data_table}', NEW."{primary_key_field}"::text);
+                    RETURN NEW;
+                  END IF;
+                  RETURN NULL;
+                END; 
+                $$ language plpgsql; 
+            """)
+
+            await self.db.execute(f"""
+                DROP TRIGGER IF EXISTS "{audit_table_trigger}" ON "{table}"
+            """)
+
+            await self.db.execute(f"""
+                CREATE TRIGGER "{audit_table_trigger}"
+                    AFTER INSERT OR UPDATE OR DELETE ON "{table}"
+                    FOR EACH ROW EXECUTE PROCEDURE "{audit_table_func}"()
+            """)

@@ -53,7 +53,7 @@ class Groza:
         # name = "c_%d" % company["companyId"]
         self.data_db = self.connectors.request(None)
         # await self.data_db.connect()
-        await self.start_tables()
+        # await self.start_tables()
 
     async def register(self, request: GrozaRequest) -> GrozaResponse:
         user = self._auth.register(request)
@@ -151,7 +151,7 @@ class Groza:
                     inject_to[recursive_inject].append(item[primary_key_field])
                     continue
 
-                ids.append(item[primary_key_field])
+                ids.append(make_key(item[primary_key_field]))
 
             from_sub = {}
             if sub_desc_from is not None:
@@ -253,91 +253,6 @@ class Groza:
                     await conn.execute(query_str, *args)
 
         return GrozaResponse({"status": "ok"})
-
-    async def start_tables(self):
-        audit_table = "groza_audit"
-        audit_table_seq = f"{audit_table}_id_seq"
-        changed_by_field = f"updatedBy"
-
-        await self.data_db.execute(f'CREATE SEQUENCE IF NOT EXISTS "{audit_table_seq}"')
-
-        await self.data_db.execute(f"""
-            CREATE TABLE IF NOT EXISTS "{audit_table}" (
-                "audit_id" int8 PRIMARY KEY,
-                "{changed_by_field}" int8 NOT NULL,
-                "int_key" int8,
-                "time" timestamp NOT NULL,
-                "operation" bpchar NOT NULL,
-                "table" varchar NOT NULL,
-                "var_key" varchar,
-                "o" hstore,
-                "n" hstore
-            );
-        """)
-
-        for table, table_desc in self.tables.items():
-            lower_table = table.lower()
-            audit_prefix_table = f"{lower_table}_audit"
-            audit_table_func = f"{audit_prefix_table}_func"
-            audit_table_trigger = f"{audit_prefix_table}_trigger"
-
-            last_updated_by_field = f"lastUpdatedBy"
-
-            primary_key_field = table_desc[0]
-
-            use_int_key = f'OLD."{primary_key_field}"' if True else 'NULL'
-            use_var_key = f'OLD."{primary_key_field}"' if False else 'NULL'
-
-            use_int_key_new = f'NEW."{primary_key_field}"' if True else 'NULL'
-            use_var_key_new = f'NEW."{primary_key_field}"' if False else 'NULL'
-
-            dbname = self.data_dbname
-            data_table = f"{dbname}.{table}"
-
-            await self.data_db.execute(f"""
-                CREATE OR REPLACE FUNCTION "{audit_table_func}"() RETURNS TRIGGER AS 
-                $$ 
-                DECLARE 
-                  r record;
-                  oldh hstore;
-                  o hstore := hstore('');
-                  n hstore := hstore('');
-                BEGIN 
-                  IF (TG_OP = 'DELETE') THEN
-                    INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), OLD."{last_updated_by_field}", {use_int_key}, now(), 'D', '{table}', {use_var_key}, hstore(OLD), hstore('');
-                    PERFORM pg_notify('{data_table}', OLD."{primary_key_field}"::text);
-                    RETURN OLD;
-                  ELSIF (TG_OP = 'UPDATE') THEN
-                    oldh = hstore(OLD);
-                    FOR r IN SELECT * FROM EACH(hstore(NEW)) 
-                    LOOP 
-                      IF (oldh->r.key != r.value) THEN 
-                        o = o || ('"' || r.key || '" => "' || (oldh->r.key) || '"')::hstore;
-                        n = n || ('"' || r.key || '" => "' || r.value || '"')::hstore;
-                      END IF;
-                    END LOOP; 
-                    INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), NEW."{last_updated_by_field}", {use_int_key}, now(), 'U', '{table}', {use_var_key}, o, n;
-                    PERFORM pg_notify('{data_table}', NEW."{primary_key_field}"::text);
-                    RETURN NEW;
-                  ELSIF (TG_OP = 'INSERT') THEN
-                    INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), NEW."{last_updated_by_field}", {use_int_key_new}, now(), 'A', '{table}', {use_var_key_new}, hstore(''), hstore(NEW);
-                    PERFORM pg_notify('{data_table}', NEW."{primary_key_field}"::text);
-                    RETURN NEW;
-                  END IF;
-                  RETURN NULL;
-                END; 
-                $$ language plpgsql; 
-            """)
-
-            await self.data_db.execute(f"""
-                DROP TRIGGER IF EXISTS "{audit_table_trigger}" ON "{table}"
-            """)
-
-            await self.data_db.execute(f"""
-                CREATE TRIGGER "{audit_table_trigger}"
-                    AFTER INSERT OR UPDATE OR DELETE ON "{table}"
-                    FOR EACH ROW EXECUTE PROCEDURE "{audit_table_func}"()
-            """)
 
 
 def test():
