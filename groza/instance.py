@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+from abc import abstractmethod
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from groza.auth import BaseAuth
 from groza.auth.debug import DebugAuth
 from groza.postgres import PostgresDB
 from groza.q import Q
+from groza.utils import FieldTransformer, CamelCaseFieldTransformer
 
 SECRET_KEY = ";!FC,gvn58QUHok}ZKb]23.iXE<01?MkRVz-YL>T:iU6tlS89'yWaY&b_NE?5xsM"
 
@@ -39,6 +41,7 @@ class Groza:
         self.data_dbname = None
         self.data_db: PostgresDB = self.main_db
         self._auth = DebugAuth()
+        self._field_transformer: FieldTransformer = CamelCaseFieldTransformer()
 
     # async def start(self):
     #     await self.start_tables()
@@ -108,11 +111,11 @@ class Groza:
 
             if sub_desc.get("where"):
                 for field, value in sub_desc["where"].items():
-                    q.WHERE(field, value)
+                    q.WHERE(self._to_db(field), value)
 
             if sub_desc.get("order"):
                 for field, order in sub_desc["order"].items():
-                    q.ORDER(field, order)
+                    q.ORDER(self._to_db(field), order)
 
             db = self.data_db
             if table == "users":
@@ -124,7 +127,10 @@ class Groza:
                     key = str(key)
                 return key
 
-            add_data = {make_key(item[primary_key_field]): dict(item) for item in items}
+            def make_item(item: dict):
+                return {self._from_db(k): v for k, v in item.items()}
+
+            add_data = {make_key(item[primary_key_field]): make_item(item) for item in items}
 
             # if table == "tasks":
             #     for i in range(200, 1200):
@@ -182,7 +188,7 @@ class Groza:
         resp = {}
         table = query["table"]
         if table not in self.tables:
-            return {"errors": [f"Table '{table}' is not handled"]}
+            return GrozaResponse({"errors": [f"Table '{table}' is not handled"]})
 
         desc = self.tables[table]
 
@@ -195,15 +201,16 @@ class Groza:
             if key == desc[0]:
                 continue
 
-            own_fields.append(f'"{key}"')
+            own_fields.append(f'"{self._to_db(key)}"')
             own_values.append(f"${idx}")
             args += (value,)
             idx += 1
 
-        # own_fields.append('"lastUpdatedBy"')
-        # own_values.append(f"${idx}")
-        # args += (user.user_id,)
-        # idx += 1
+        last_updated_by_field = self._to_db("last_updated_by")
+        own_fields.append(f'"{last_updated_by_field}"')
+        own_values.append(f"${idx}")
+        args += (user.user_id,)
+        idx += 1
 
         own_fields_str = ", ".join(own_fields)
         own_values_str = ", ".join(own_values)
@@ -213,7 +220,7 @@ class Groza:
         query = f'INSERT INTO {table} ({own_fields_str}) VALUES ({own_values_str}) RETURNING "{primary_key}"'
         result = await self.data_db.fetchrow(query, *args)
         if not result:
-            return {"status": "error", "message": "No result"}
+            return GrozaResponse({"status": "error", "message": "No result"})
 
         return GrozaResponse({"status": "ok", primary_key: result[primary_key]})
 
@@ -221,7 +228,7 @@ class Groza:
         for cnt, (query, upd) in enumerate(update):
             table = query["table"]
             if table not in self.tables:
-                return {"errors": [f"Table '{table}' in #{cnt} row is not handled"]}
+                return GrozaResponse({"errors": [f"Table '{table}' in #{cnt} row is not handled"]})
 
         async with self.data_db.pool.acquire() as conn:
             async with conn.transaction():
@@ -233,13 +240,14 @@ class Groza:
                     args = ()
                     fields = []
                     for key, value in upd.items():
-                        fields.append(f'"{key}" = ${idx}')
+                        fields.append(f'"{self._to_db(key)}" = ${idx}')
                         args += (value,)
                         idx += 1
 
-                    # fields.append(f'"lastUpdatedBy" = ${idx}')
-                    # args += (user.user_id,)
-                    # idx += 1
+                    last_updated_by_field = self._to_db("last_updated_by")
+                    fields.append(f'"{last_updated_by_field}" = ${idx}')
+                    args += (user.user_id,)
+                    idx += 1
 
                     value_fields = ", ".join(fields)
 
@@ -253,6 +261,12 @@ class Groza:
                     await conn.execute(query_str, *args)
 
         return GrozaResponse({"status": "ok"})
+
+    def _from_db(self, field):
+        return self._field_transformer.from_db(field)
+
+    def _to_db(self, field):
+        return self._field_transformer.to_db(field)
 
 
 def test():
@@ -311,6 +325,7 @@ def test():
         }
 
         res = await groza.fetch_sub(User(), subscription)
+        res = res.data
 
         assert set(res["sub"]["allBoxes"]["ids"]) == {1, 2}
         assert set(res["sub"]["boxTasks"]["ids"]) == {1, 3, 4}

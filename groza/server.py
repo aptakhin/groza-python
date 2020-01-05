@@ -8,7 +8,7 @@ from typing import List
 import websockets
 from aiohttp import web
 
-from groza import User, GrozaRequest
+from groza import User, GrozaRequest, GrozaResponse
 from groza.postgres import PostgresDB
 from groza.instance import Groza
 from groza.utils import build_logger, init_file_loggers, json_serial
@@ -23,7 +23,7 @@ class ServerProtocol(websockets.WebSocketServerProtocol):
 class Connection:
     def __init__(self, handler, ws, queries):
         self.handler: Groza = handler
-        self.user = User()
+        self.user = User(auth_token='', user_id=1)
         self.ws = ws
         self.queries = queries
         self.log = build_logger("WS")
@@ -63,7 +63,7 @@ class Connection:
                 self.user.user_id = handle_resp.data["userId"]
         elif req_type == "sub":
             if "sub" not in request or not isinstance(request["sub"], dict):
-                return {"status": "error", "message": "Invalid not dict sub"}
+                return GrozaResponse({"status": "error", "message": "Invalid not dict sub"})
             self.all_sub = request["sub"]
             # self.global_params = request["global"]
 
@@ -223,7 +223,7 @@ class Server:
             audit_table_func = f"{audit_prefix_table}_func"
             audit_table_trigger = f"{audit_prefix_table}_trigger"
 
-            last_updated_by_field = f"lastUpdatedBy"
+            last_updated_by_field = f"last_updated_by"
 
             primary_key_field = table_desc[0]
 

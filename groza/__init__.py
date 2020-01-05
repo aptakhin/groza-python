@@ -26,3 +26,13 @@ class GrozaResponse:
     @property
     def data(self):
         return self._data
+
+
+class GrozaModel:
+    pass
+
+
+class GrozaForeignKey:
+    def __init__(self, model, field):
+        self.model = model
+        self.field = field

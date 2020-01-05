@@ -1,5 +1,6 @@
 import logging
 import logging.handlers
+from abc import abstractmethod
 
 from datetime import datetime, date, timezone
 from uuid import UUID
@@ -58,3 +59,50 @@ def build_logger(name, is_debug=True):
     loggers[name] = logger
     return logger
 
+
+class FieldTransformer:
+    @abstractmethod
+    def to_db(self, name: str) -> str:
+        return name
+
+    @abstractmethod
+    def from_db(self, name: str) -> str:
+        return name
+
+
+class CamelCaseFieldTransformer(FieldTransformer):
+    def to_db(self, name: str) -> str:
+        """
+        camelCase -> camel_case
+        """
+        build = ""
+        for c in name:
+            if c.isupper():
+                build += "_" + c.lower()
+            else:
+                build += c
+
+        return build
+
+    def from_db(self, name: str) -> str:
+        """
+        underscore_case -> underscoreCase
+        """
+        build = ""
+
+        ST_NORMAL = 0
+        ST_LOWER = 1
+
+        state = ST_NORMAL
+
+        for c in name:
+            if state == ST_NORMAL:
+                if c == "_":
+                    state = ST_LOWER
+                else:
+                    build += c
+            elif state == ST_LOWER:
+                build += c.upper()
+                state = ST_NORMAL
+
+        return build
