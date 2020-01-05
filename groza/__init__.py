@@ -1,16 +1,10 @@
+import contextvars
 
 
 class User:
     def __init__(self, auth_token=None, user_id=None):
         self.auth_token = auth_token
         self.user_id = user_id
-
-
-class Table:
-    def __init__(self, primary_key):
-        self.primary_key = primary_key
-
-        self.before_update = {}
 
 
 class GrozaRequest:
@@ -27,12 +21,3 @@ class GrozaResponse:
     def data(self):
         return self._data
 
-
-class GrozaModel:
-    pass
-
-
-class GrozaForeignKey:
-    def __init__(self, model, field):
-        self.model = model
-        self.field = field

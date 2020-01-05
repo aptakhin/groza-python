@@ -1,15 +1,11 @@
 import asyncio
 import hashlib
-import json
-from abc import abstractmethod
-from datetime import datetime, timedelta
 from uuid import UUID
 
 from groza import User, GrozaRequest, GrozaResponse
-from groza.auth import BaseAuth
 from groza.auth.debug import DebugAuth
-from groza.postgres import PostgresDB
-from groza.q import Q
+
+from groza.storage import BaseStorage, groza_db, groza_models, GrozaModel
 from groza.utils import FieldTransformer, CamelCaseFieldTransformer
 
 SECRET_KEY = ";!FC,gvn58QUHok}ZKb]23.iXE<01?MkRVz-YL>T:iU6tlS89'yWaY&b_NE?5xsM"
@@ -25,38 +21,12 @@ def hashit(passw):
     return m.hexdigest()
 
 
-class Table:
-    def __init__(self, table, primary_key, foreign=None):
-        self.table = table
-        self.primary_key = primary_key
-
-        self.foreign = foreign if foreign is not None else {}
-
-
 class Groza:
-    def __init__(self, tables, connectors):
-        self.tables = tables
-        self.connectors = connectors
-        self.main_db = connectors.request()
-        self.data_dbname = None
-        self.data_db: PostgresDB = self.main_db
+    def __init__(self):
+        # self.tables = tables
+        self._storage: BaseStorage = groza_db.get()
         self._auth = DebugAuth()
         self._field_transformer: FieldTransformer = CamelCaseFieldTransformer()
-
-    # async def start(self):
-    #     await self.start_tables()
-
-    # @property
-    # def auth(self) -> BaseAuth:
-    #     return self._auth
-
-    async def setup_data_db(self, dbname):
-        self.data_dbname = dbname
-        # company = await self.main_db.fetchrow('SELECT "companyId" FROM companies WHERE slug=$1', dbname)
-        # name = "c_%d" % company["companyId"]
-        self.data_db = self.connectors.request(None)
-        # await self.data_db.connect()
-        # await self.start_tables()
 
     async def register(self, request: GrozaRequest) -> GrozaResponse:
         user = self._auth.register(request)
@@ -72,6 +42,10 @@ class Groza:
         # user = self.auth.register(request)
         return GrozaResponse({}, request=request)
 
+    def _get_model(self, name) -> GrozaModel:
+        model = groza_models.get().require_model(name)
+        return model
+
     async def fetch_sub(self, user, all_sub):
         resp = {}
         data = {}
@@ -79,101 +53,78 @@ class Groza:
 
         sub_resp = {}
 
-        for sub, sub_desc in all_sub.items():
-            table = sub_desc["table"]
-            if table not in self.tables:
-                errors.append(f"Table '{table}' is not handled")
-                continue
+        async with self._storage.session() as session:
+            for sub, sub_desc in all_sub.items():
+                model_name = sub_desc["model"]
+                # if table not in self.tables:
+                #     errors.append(f"Table '{table}' is not handled")
+                #     continue
+                #
+                # sub_table = self.tables[table]
 
-            sub_table = self.tables[table]
+                model = self._get_model(model_name)
 
-            q = Q.SELECT().FROM(table)
+                sub_desc_from = sub_desc.get("fromSub")
+                items, link_field = await session.query(
+                    model=model,
+                    from_sub=sub_desc_from,
+                    where=sub_desc.get("where"),
+                    order=sub_desc.get("order"),
+                    all_sub=all_sub,
+                    sub_resp=sub_resp,
+                )
 
-            primary_key_field = sub_table[0]
+                primary_key_field = model.primary_key
 
-            link_field = None
-            sub_desc_from = sub_desc.get("fromSub")
-            if sub_desc_from is not None:
-                if sub_desc_from not in sub_resp:
-                    errors.append(f"Link '{sub_desc_from}' not found in results. Check identifiers and order")
-                    continue
+                def make_key(key):
+                    if isinstance(key, UUID):
+                        key = str(key)
+                    return key
 
-                link_table = all_sub[sub_desc_from]["table"]
+                def make_item(item: dict):
+                    return {self._from_db(k): v for k, v in item.items()}
 
-                link_field = sub_table[1].get(link_table)
-                if not link_field:
-                    errors.append(f"Link '{table}'=>'{link_table}' not found")
-                    continue
+                add_data = {make_key(item[primary_key_field]): make_item(item) for item in items}
 
-                link_field = link_field[0]
+                table = model.table
 
-                q.WHERE(link_field, Q.Any(sub_resp[sub_desc_from]["ids"]))
+                data.setdefault(table, {})
+                data[table].update(add_data)
 
-            if sub_desc.get("where"):
-                for field, value in sub_desc["where"].items():
-                    q.WHERE(self._to_db(field), value)
+                ids = []
+                recursive_field, recursive_inject = sub_desc.get("recursive", (None, None))
 
-            if sub_desc.get("order"):
-                for field, order in sub_desc["order"].items():
-                    q.ORDER(self._to_db(field), order)
+                assert (recursive_field is None and recursive_inject is None
+                     or recursive_field is not None and recursive_inject is not None)
 
-            db = self.data_db
-            if table == "users":
-                db = self.main_db
-            items = list(await db.fetch(q))
+                if recursive_field:
+                    for key in add_data.keys():
+                        add_data[key].setdefault(recursive_inject, [])
 
-            def make_key(key):
-                if isinstance(key, UUID):
-                    key = str(key)
-                return key
-
-            def make_item(item: dict):
-                return {self._from_db(k): v for k, v in item.items()}
-
-            add_data = {make_key(item[primary_key_field]): make_item(item) for item in items}
-
-            # if table == "tasks":
-            #     for i in range(200, 1200):
-            #         add_data[i] = dict(add_data[117])
-            #         add_data[i]["taskId"] = i
-
-            data.setdefault(table, {})
-            data[table].update(add_data)
-
-            ids = []
-            recursive_field, recursive_inject = sub_desc.get("recursive", (None, None))
-
-            assert (recursive_field is None and recursive_inject is None
-                 or recursive_field is not None and recursive_inject is not None)
-
-            if recursive_field:
-                for key in add_data.keys():
-                    add_data[key].setdefault(recursive_inject, [])
-
-            for key, item in add_data.items():
-                if recursive_field and item.get(recursive_field):
-                    inject_to = data[table][item[recursive_field]]
-                    inject_to.setdefault(recursive_inject, [])
-                    inject_to[recursive_inject].append(item[primary_key_field])
-                    continue
-
-                ids.append(make_key(item[primary_key_field]))
-
-            from_sub = {}
-            if sub_desc_from is not None:
                 for key, item in add_data.items():
-                    lf = item[link_field]
+                    if recursive_field and item.get(recursive_field):
+                        inject_to = data[table][item[recursive_field]]
+                        inject_to.setdefault(recursive_inject, [])
+                        inject_to[recursive_inject].append(item[primary_key_field])
+                        continue
 
-                    from_sub.setdefault(lf, [])
-                    from_sub[lf].append(item[primary_key_field])
+                    ids.append(make_key(item[primary_key_field]))
 
-            sub_resp[sub] = {
-                "status": "ok",
-                "dataField": table,
-                "ids": ids,
-            }
+                from_sub = {}
+                if sub_desc_from is not None:
+                    for key, item in add_data.items():
+                        lf = item[link_field]
 
-            sub_resp[sub]["fromSub"] = from_sub
+                        from_sub.setdefault(lf, [])
+                        from_sub[lf].append(item[primary_key_field])
+
+                sub_resp[sub] = {
+                    "status": "ok",
+                    "dataField": table,
+                    "ids": ids,
+                }
+
+                sub_resp[sub]["fromSub"] = from_sub
 
         resp["type"] = "data"
         resp["data"] = data
@@ -190,35 +141,13 @@ class Groza:
         if table not in self.tables:
             return GrozaResponse({"errors": [f"Table '{table}' is not handled"]})
 
-        desc = self.tables[table]
+        async with self._storage.session() as session:
+            result = await session.insert(
+                model=model,
+                insert=insert,
+                user=user
+            )
 
-        idx = 1
-        args = ()
-        own_fields = []
-        own_values = []
-
-        for key, value in insert.items():
-            if key == desc[0]:
-                continue
-
-            own_fields.append(f'"{self._to_db(key)}"')
-            own_values.append(f"${idx}")
-            args += (value,)
-            idx += 1
-
-        last_updated_by_field = self._to_db("last_updated_by")
-        own_fields.append(f'"{last_updated_by_field}"')
-        own_values.append(f"${idx}")
-        args += (user.user_id,)
-        idx += 1
-
-        own_fields_str = ", ".join(own_fields)
-        own_values_str = ", ".join(own_values)
-
-        primary_key = desc[0]
-
-        query = f'INSERT INTO {table} ({own_fields_str}) VALUES ({own_values_str}) RETURNING "{primary_key}"'
-        result = await self.data_db.fetchrow(query, *args)
         if not result:
             return GrozaResponse({"status": "error", "message": "No result"})
 
