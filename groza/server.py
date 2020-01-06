@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import http
 import json
@@ -8,11 +7,9 @@ from typing import List
 import websockets
 from aiohttp import web
 
-from groza import User, GrozaRequest, GrozaResponse
-# from groza.postgres import PostgresDB
+from groza import GrozaUser, GrozaRequest, GrozaResponse
 from groza.instance import Groza
-from groza.storage import groza_db
-from groza.utils import build_logger, init_file_loggers, json_serial
+from groza.utils import build_logger, json_serial
 
 
 class ServerProtocol(websockets.WebSocketServerProtocol):
@@ -24,7 +21,7 @@ class ServerProtocol(websockets.WebSocketServerProtocol):
 class Connection:
     def __init__(self, handler, ws, queries):
         self.handler: Groza = handler
-        self.user = User(auth_token='', user_id=1)
+        self.user = GrozaUser(auth_token='', user_id=1)
         self.ws = ws
         self.queries = queries
         self.log = build_logger("WS")
@@ -66,10 +63,6 @@ class Connection:
             if "sub" not in request or not isinstance(request["sub"], dict):
                 return GrozaResponse({"status": "error", "message": "Invalid not dict sub"})
             self.all_sub = request["sub"]
-            # self.global_params = request["global"]
-
-            # await self.handler.setup_data_db(self.global_params["company"])
-
             handle_resp = await self.handler.fetch_sub(self.user, self.all_sub)
             self.last_sub = handle_resp.data["sub"]
         elif req_type == "update":
@@ -133,7 +126,6 @@ class Server:
 
     async def start(self):
         pass
-
 
     async def ws_handler(self, request):
         ws = web.WebSocketResponse()

@@ -1,13 +1,13 @@
 from abc import abstractmethod
 
-from groza import User, GrozaRequest
+from groza import GrozaUser, GrozaRequest
 
 
 class BaseAuth:
     @abstractmethod
-    def register(self, request: GrozaRequest) -> User:
+    def register(self, request: GrozaRequest) -> GrozaUser:
         pass
 
     @abstractmethod
-    def login(self, request: GrozaRequest) -> User:
+    def login(self, request: GrozaRequest) -> GrozaUser:
         pass

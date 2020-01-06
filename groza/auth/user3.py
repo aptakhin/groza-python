@@ -9,22 +9,22 @@
 #         if not password:
 #             raise ValueError("Password can't be empty")
 #
-#         q = Q.INSERT("users").SET(
+#         q = Q.INSERT("users").set(
 #             lastUpdatedBy=-1,
 #             timeCreated=Q.Unsafe("now()"),
 #             timeUpdated=Q.Unsafe("now()"),
-#         ).RETURNING("userId")
+#         ).returning("userId")
 #         user = await self.main_db.fetchrow(q)
 #
 #         passhash = hashit(password)
-#         q = Q.INSERT("users_logins").SET(
+#         q = Q.INSERT("users_logins").set(
 #             lastUpdatedBy=user["userId"],
 #             userId=user["userId"],
 #             timeCreated=Q.Unsafe("now()"),
 #             type=method,
 #             main=email,
 #             secondary=passhash,
-#         ).RETURNING("*")
+#         ).returning("*")
 #         auth = await self.main_db.fetchrow(q)
 #
 #         valid_until = datetime.now() + timedelta(days=1)
@@ -35,7 +35,7 @@
 #             "device": device,
 #         }
 #
-#         q = Q.INSERT("users_auths").SET(
+#         q = Q.INSERT("users_auths").set(
 #             lastUpdatedBy=auth["userId"],
 #             userLoginId=auth["userLoginId"],
 #             userId=auth["userId"],
@@ -61,7 +61,7 @@
 #
 #         passhash = hashit(password)
 #         auth = await self.main_db.fetchrow("""
-#             SELECT * FROM users_logins WHERE type=$1 AND main=$2 AND secondary=$3
+#             SELECT * from_ users_logins where type=$1 AND main=$2 AND secondary=$3
 #         """, method, email, passhash)
 #         if not auth:
 #             return {"status": "error", "code": 2, "message": "Can't find email/password pair"}
@@ -73,7 +73,7 @@
 #         add_data = {
 #             "device": device,
 #         }
-#         q = Q.INSERT("users_auths").SET(
+#         q = Q.INSERT("users_auths").set(
 #             lastUpdatedBy=auth["userId"],
 #             userLoginId=auth["userLoginId"],
 #             userId=auth["userId"],
@@ -91,7 +91,7 @@
 #
 # async def auth(self, user, token):
 #     auth = await self.main_db.fetchrow("""
-#         SELECT "userId", "validUntil" FROM users_auths WHERE token=$1
+#         SELECT "userId", "validUntil" from_ users_auths where token=$1
 #     """, token)
 #
 #     if not auth:
@@ -101,7 +101,7 @@
 #         return {"status": "error", "message": "Token expired", "code": 3}
 #
 #     await self.main_db.execute("""
-#         UPDATE users_auths SET "timeLastAccess"=now() WHERE token=$1
+#         UPDATE users_auths set "timeLastAccess"=now() where token=$1
 #     """, token)
 #
 #     return {"status": "ok", "type": "auth", "userId": auth["userId"]}

@@ -2,25 +2,24 @@ import contextvars
 from abc import abstractmethod
 from typing import Union
 
-from groza import User
+from groza import GrozaUser
 
 
 groza_db = contextvars.ContextVar("groza_db")
 
-groza_models = contextvars.ContextVar("groza_models")
-
+groza_visors = contextvars.ContextVar("groza_visors")
 
 class GrozaCreator(type):
     def __new__(cls, name, bases, attrs):
         instance = super().__new__(cls, name, bases, attrs)
 
-        models = groza_models.get(None)
+        models = groza_visors.get(None)
         if models is None:
-            groza_models.set(GrozaModels())
-        models: GrozaModels = groza_models.get()
+            groza_visors.set(GrozaVisors())
+        models: GrozaVisors = groza_visors.get()
 
-        if bases and name not in models._models_dict and name not in ("GrozaForeignKey",):
-            models._models_dict[name] = instance
+        if bases and name not in models._visors_dict and name not in ("GrozaForeignKey",):
+            models._visors_dict[name] = instance
             # models._models_list.append(instance)
 
         def get_value(*_):
@@ -34,34 +33,74 @@ class GrozaAction:
     pass
 
 
-class GrozaModels:
+class GrozaInput(dict):
+    pass
+
+
+class GrozaSession:
+    @abstractmethod
+    def transaction(self):
+        pass
+
+    @abstractmethod
+    def raw_conn(self):
+        pass
+
+    @abstractmethod
+    async def insert(self, *, visor: "GrozaVisor", insert: GrozaInput, user: GrozaUser):
+        pass
+
+    @abstractmethod
+    async def update(self, *, visor: "GrozaVisor", update, user: GrozaUser):
+        pass
+
+    #
+    # @abstractmethod
+    # def update(self, model):
+    #     pass
+
+
+class GrozaStorage:
+    @abstractmethod
+    def session(self) -> GrozaSession:
+        return GrozaSession()
+
+    @abstractmethod
+    def release(self, session: GrozaSession):
+        pass
+
+
+
+
+class GrozaVisors:
     def __init__(self):
         # self._models = []
-        self._models_dict: dict = {}
+        self._visors_dict: dict = {}
 
-    def require_model(self, name) -> "GrozaModel":
-        return self._models_dict[name]
+    def require_visor(self, name) -> "GrozaVisor":
+        return self._visors_dict[name]
+
+    def visor_values(self):
+        return self._visors_dict.values()
 
 
-class GrozaModel(metaclass=GrozaCreator):
+class GrozaVisor(metaclass=GrozaCreator):
     def __init__(self):
         self.table: str = ""
         self.primary_key: str = ""
 
     @abstractmethod
-    async def ensure_permission(self, user: User, action: GrozaAction, session):
+    async def ensure_permission(self, user: GrozaUser, action: GrozaAction, session):
         pass
 
-    @abstractmethod
-    async def insert(self, data: dict):
-        pass
+    async def insert(self, insert: GrozaInput, user: GrozaUser, session: GrozaSession):
+        return await session.insert(visor=self, insert=insert, user=user)
 
-    @abstractmethod
-    async def update(self, data: dict):
-        pass
+    async def update(self, update, user: GrozaUser, session: GrozaSession):
+        return await session.update(visor=self, update=update, user=user)
 
 
-class GrozaForeignKey(GrozaModel):
+class GrozaForeignKey(GrozaVisor):
     def __init__(self, model: Union[type, str], field: str):
         self._model = model
         self._field = field
@@ -75,23 +114,4 @@ class GrozaForeignKey(GrozaModel):
     # async def update(self, data: dict):
     #     pass
 
-
-class BaseSession:
-    @abstractmethod
-    def insert(self, model):
-        pass
-
-    @abstractmethod
-    def update(self, model):
-        pass
-
-
-class BaseStorage:
-    @abstractmethod
-    def session(self) -> BaseSession:
-        return BaseSession()
-
-    @abstractmethod
-    def release(self, session: BaseSession):
-        pass
 

@@ -1,10 +1,10 @@
 from groza import GrozaRequest
-from groza.auth import BaseAuth, User
+from groza.auth import BaseAuth, GrozaUser
 
 
 class DebugAuth(BaseAuth):
-    def register(self, request: GrozaRequest) -> User:
+    def register(self, request: GrozaRequest) -> GrozaUser:
         pass
 
-    def login(self, request: GrozaRequest) -> User:
-        return User(user_id=1)
+    def login(self, request: GrozaRequest) -> GrozaUser:
+        return GrozaUser(user_id=1)

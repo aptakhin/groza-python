@@ -2,11 +2,10 @@ import asyncio
 import hashlib
 from uuid import UUID
 
-from groza import User, GrozaRequest, GrozaResponse
+from groza import GrozaUser, GrozaRequest, GrozaResponse
 from groza.auth.debug import DebugAuth
 
-from groza.storage import BaseStorage, groza_db, groza_models, GrozaModel
-from groza.utils import FieldTransformer, CamelCaseFieldTransformer
+from groza.storage import GrozaStorage, groza_db, groza_visors, GrozaVisor
 
 SECRET_KEY = ";!FC,gvn58QUHok}ZKb]23.iXE<01?MkRVz-YL>T:iU6tlS89'yWaY&b_NE?5xsM"
 
@@ -24,9 +23,8 @@ def hashit(passw):
 class Groza:
     def __init__(self):
         # self.tables = tables
-        self._storage: BaseStorage = groza_db.get()
+        self._storage: GrozaStorage = groza_db.get()
         self._auth = DebugAuth()
-        self._field_transformer: FieldTransformer = CamelCaseFieldTransformer()
 
     async def register(self, request: GrozaRequest) -> GrozaResponse:
         user = self._auth.register(request)
@@ -51,18 +49,18 @@ class Groza:
 
         async with self._storage.session() as session:
             for sub, sub_desc in all_sub.items():
-                model_name = sub_desc["model"]
+                visor_name = sub_desc["visor"]
                 # if table not in self.tables:
                 #     errors.append(f"Table '{table}' is not handled")
                 #     continue
                 #
                 # sub_table = self.tables[table]
 
-                model = self._get_model(model_name)
+                visor = self._get_visor(visor_name)
 
                 sub_desc_from = sub_desc.get("fromSub")
-                items, link_field = await session.query(
-                    visor=model,
+                add_data, link_field = await session.query(
+                    visor=visor,
                     from_sub=sub_desc_from,
                     where=sub_desc.get("where"),
                     order=sub_desc.get("order"),
@@ -70,19 +68,14 @@ class Groza:
                     sub_resp=sub_resp,
                 )
 
-                primary_key_field = model.primary_key
+                primary_key_field = visor.primary_key
 
                 def make_key(key):
                     if isinstance(key, UUID):
                         key = str(key)
                     return key
 
-                def make_item(item: dict):
-                    return {self._from_db(k): v for k, v in item.items()}
-
-                add_data = {make_key(item[primary_key_field]): make_item(item) for item in items}
-
-                table = model.table
+                table = visor.table
 
                 data.setdefault(table, {})
                 data[table].update(add_data)
@@ -132,33 +125,35 @@ class Groza:
         return GrozaResponse(resp)
 
     async def query_insert(self, user, query, insert):
-        model_name = query["model"]
-        model = self._get_model(model_name)
+        visor_name = query["visor"]
+        visor = self._get_visor(visor_name)
         # if table not in self.tables:
         #     return GrozaResponse({"errors": [f"Table '{table}' is not handled"]})
 
         async with self._storage.session() as session:
-            result = await session.insert(
-                visor=model,
-                insert=insert,
-                user=user
-            )
+            visor_instance = visor()
+            result = await visor_instance.insert(insert=insert, user=user, session=session)
+            # result = await session.insert(
+            #     visor=visor,
+            #     insert=insert,
+            #     user=user
+            # )
 
         if not result:
             return GrozaResponse({"status": "error", "message": "No result"})
 
-        return GrozaResponse({"status": "ok", model.primary_key: result[model.primary_key]})
+        return GrozaResponse({"status": "ok", visor.primary_key: result[visor.primary_key]})
 
     async def query_update(self, user, update):
         for cnt, (query, upd) in enumerate(update):
-            model_name = query["model"]
-            _ = self._get_model(model_name)
+            visor_name = query["visor"]
+            _ = self._get_visor(visor_name)
 
         async with self._storage.session() as session:
             async with session.transaction():
                 for cnt, (query, upd) in enumerate(update):
-                    model_name = query["model"]
-                    visor = self._get_model(model_name)
+                    visor_name = query["visor"]
+                    visor = self._get_visor(visor_name)
 
                     await session.update(
                         visor=visor,
@@ -169,15 +164,9 @@ class Groza:
         return GrozaResponse({"status": "ok"})
 
     @classmethod
-    def _get_model(cls, name) -> GrozaModel:
-        model = groza_models.get().require_model(name)
+    def _get_visor(cls, name) -> GrozaVisor:
+        model = groza_visors.get().require_visor(name)
         return model
-
-    def _from_db(self, field):
-        return self._field_transformer.from_db(field)
-
-    def _to_db(self, field):
-        return self._field_transformer.to_db(field)
 
 
 def test():
@@ -210,7 +199,7 @@ def test():
 
             await conn.execute(f'INSERT INTO {boxes} ("boxId", "title") VALUES ($1, $2)', 1, "First Box")
 
-            await conn.execute(f'INSERT INTO {tasks} ("taskId", "boxId", "title") VALUES ($1, $2, $3) RETURNING "taskId"', 1, 1, "First Task")
+            await conn.execute(f'INSERT INTO {tasks} ("taskId", "boxId", "title") VALUES ($1, $2, $3) returning "taskId"', 1, 1, "First Task")
             await conn.execute(f'INSERT INTO {tasks} ("taskId", "boxId", "title", "parentBoxId") VALUES ($1, $2, $3, $4)', 2, 1, "First Sub Task", 1)
             await conn.execute(f'INSERT INTO {tasks} ("taskId", "boxId", "title") VALUES ($1, $2, $3)', 3, 1, "Second Task")
 
@@ -235,7 +224,7 @@ def test():
             "boxTasks": {"table": tasks, "fromSub": "allBoxes", "recursive": ("parentBoxId", "childrenIds")},
         }
 
-        res = await groza.fetch_sub(User(), subscription)
+        res = await groza.fetch_sub(GrozaUser(), subscription)
         res = res.data
 
         assert set(res["sub"]["allBoxes"]["ids"]) == {1, 2}

@@ -1,12 +1,12 @@
 import asyncpg
 
-from groza.storage.asyncpg.q import Q
+from pssq import Q
 from groza.utils import build_logger
 
 
 def _prepare(query, args):
     if isinstance(query, Q):
-        query, args = query.END()
+        query, args = query.end()
         return query, args
 
     return query, args
@@ -115,7 +115,7 @@ class _PostgresBackend:
 
     async def execute(self, query, *args):
         if isinstance(query, Q):
-            query, args = query.END()
+            query, args = query.end()
         try:
             self.log.debug("db execute: %s; %s", query, args)
             await self.pool.execute(query, *args)
@@ -125,7 +125,7 @@ class _PostgresBackend:
 
     async def executemany(self, query, args):
         if isinstance(query, Q):
-            query, args = query.END()
+            query, args = query.end()
         try:
             self.log.debug("db executemany: %s; %s", query, args)
             await self.pool.executemany(query, args)
@@ -135,7 +135,7 @@ class _PostgresBackend:
 
     async def fetch(self, query, *args):
         if isinstance(query, Q):
-            query, args = query.END()
+            query, args = query.end()
         try:
             self.log.debug("db fetch: %s; %s", query, args)
             return await self.pool.fetch(query, *args)
@@ -145,7 +145,7 @@ class _PostgresBackend:
 
     async def fetchrow(self, query, *args):
         if isinstance(query, Q):
-            query, args = query.END()
+            query, args = query.end()
         try:
             self.log.debug("db fetchrow: %s; %s", query, args)
             return await self.pool.fetchrow(query, *args)
@@ -155,7 +155,7 @@ class _PostgresBackend:
 
     async def fetchval(self, query, *args):
         if isinstance(query, Q):
-            query, args = query.END()
+            query, args = query.end()
         try:
             self.log.debug("db fetchval: %s; %s", query, args)
             return await self.pool.fetchval(query, *args)
