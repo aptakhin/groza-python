@@ -24,12 +24,8 @@ class Connection:
 
     async def handle_request(self, request):
         resp = {
-            "response": request["counter"],
+            "responseQueryId": request["queryId"],
         }
-
-        if not isinstance(request.get("counter"), (int,)):
-            resp.update({"status": "error", "message": "Invalid not integer counter"})
-            return resp
 
         if request.get("type") not in ("login", "sub", "auth", "register", "update", "insert", "delete"):
             return {"status": "error", "message": "Invalid type: %s" % request.get("type")}
@@ -86,7 +82,7 @@ class Connection:
 
     async def send(self, resp):
         js = json.dumps(resp, default=json_serial)
-        self.log.debug("Resp: %s" % js)
+        self.log.debug(".. Resp: %s" % js)
         await self.ws.send_str(js)
 
     async def send_sub(self):
@@ -97,7 +93,7 @@ class Connection:
     async def notify_change(self, table, obj_id):
         for key, data in self.last_sub.items():
             data_table = data["dataField"]
-            # TODO: проверять связность
+            # TODO: check links
             if table != data_table:
                 continue
 
