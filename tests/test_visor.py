@@ -7,19 +7,22 @@ from groza.instance import Groza
 from groza.storage import GrozaVisor, groza_db, GrozaVisors, groza_visors
 
 from tests.memory_storage import MemoryStorage
+from tests.schema import TTable, TSchema, TColumn, TType, TRow
 
 
-def test_fetch_sub():
-    data = {
-        "accounts": [
-            {"id": 1, "name": "aaa"},
-            {"id": 2, "name": "bbb"},
-        ]
-    }
+def test_fetch_sub(groza_storage):
+    schema = TSchema(
+        tables=[
+            TTable("accounts", [
+                TColumn("id", TType.INT8),
+                TColumn("name", TType.STR),
+            ], data=[
+                TRow({"id": 1, "name": "aaa"}),
+                TRow( {"id": 2, "name": "bbb"}),
+            ]),
+        ])
 
-    # TODO: to context init
-    groza_db.set(MemoryStorage(data))
-    groza_visors.set(GrozaVisors())
+    groza_storage.setup(schema)
 
     class Account(GrozaVisor):
         table = "accounts"
@@ -39,17 +42,20 @@ def test_fetch_sub():
     assert set(sub["allAccounts"]["ids"]) == {1, 2}
 
 
-def test_insert():
-    data = {
-        "accounts": [
-            {"id": 1, "name": "aaa"},
-            {"id": 2, "name": "bbb"},
+def test_insert(groza_storage):
+    schema = TSchema(
+        tables=[
+            TTable("accounts", [
+                TColumn("id", TType.INT8),
+                TColumn("name", TType.STR),
+            ], data=[
+                TRow({"id": 1, "name": "aaa"}),
+                TRow({"id": 2, "name": "bbb"}),
+            ]),
         ]
-    }
+    )
 
-    # TODO: to context init
-    groza_db.set(MemoryStorage(data))
-    groza_visors.set(GrozaVisors())
+    groza_storage.setup(schema)
 
     class Account(GrozaVisor):
         table = "accounts"
@@ -66,17 +72,19 @@ def test_insert():
     assert resp.data["id"] == 3
 
 
-def test_update():
-    data = {
-        "accounts": [
-            {"id": 1, "name": "aaa"},
-            {"id": 2, "name": "bbb"},
+def test_update(groza_storage):
+    schema = TSchema(
+        tables=[
+            TTable("accounts", [
+                TColumn("id", TType.INT8),
+                TColumn("name", TType.STR),
+            ], data=[
+                TRow({"id": 1, "name": "aaa"}),
+                TRow({"id": 2, "name": "bbb"}),
+            ]),
         ]
-    }
-
-    # TODO: to context init
-    groza_db.set(MemoryStorage(data))
-    groza_visors.set(GrozaVisors())
+    )
+    groza_storage.setup(schema)
 
     class Account(GrozaVisor):
         table = "accounts"
@@ -89,8 +97,8 @@ def test_update():
     resp = asyncio.get_event_loop().run_until_complete(groza.query_update(user=GrozaUser(), update=update))
     assert resp.data["status"] == "ok"
 
-    assert data["accounts"][0]["id"] == 1
-    assert data["accounts"][0]["name"] == "aaa1"
+    assert schema.tables["accounts"].data[0]["id"] == 1
+    assert schema.tables["accounts"].data[0]["name"] == "aaa1"
 
 
 if __name__ == "__main__":
