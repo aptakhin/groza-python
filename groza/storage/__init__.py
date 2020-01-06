@@ -7,7 +7,9 @@ from groza import GrozaUser
 
 groza_db = contextvars.ContextVar("groza_db")
 
+
 groza_visors = contextvars.ContextVar("groza_visors")
+
 
 class GrozaCreator(type):
     def __new__(cls, name, bases, attrs):
@@ -20,7 +22,6 @@ class GrozaCreator(type):
 
         if bases and name not in models._visors_dict and name not in ("GrozaForeignKey",):
             models._visors_dict[name] = instance
-            # models._models_list.append(instance)
 
         def get_value(*_):
             return groza_db.get()
@@ -54,11 +55,6 @@ class GrozaSession:
     async def update(self, *, visor: "GrozaVisor", update, user: GrozaUser):
         pass
 
-    #
-    # @abstractmethod
-    # def update(self, model):
-    #     pass
-
 
 class GrozaStorage:
     @abstractmethod
@@ -68,8 +64,6 @@ class GrozaStorage:
     @abstractmethod
     def release(self, session: GrozaSession):
         pass
-
-
 
 
 class GrozaVisors:
@@ -86,8 +80,7 @@ class GrozaVisors:
 
 class GrozaVisor(metaclass=GrozaCreator):
     def __init__(self):
-        self.table: str = ""
-        self.primary_key: str = ""
+        pass
 
     @abstractmethod
     async def ensure_permission(self, user: GrozaUser, action: GrozaAction, session):
@@ -104,14 +97,3 @@ class GrozaForeignKey(GrozaVisor):
     def __init__(self, model: Union[type, str], field: str):
         self._model = model
         self._field = field
-
-    # async def ensure_permission(self, user: User, action: GrozaAction, trans):
-    #     pass
-    #
-    # async def insert(self, data: dict):
-    #     pass
-    #
-    # async def update(self, data: dict):
-    #     pass
-
-
