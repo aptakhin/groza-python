@@ -1,21 +1,13 @@
 import asyncio
-import http
 import json
 from collections import OrderedDict
 from typing import List
 
-import websockets
 from aiohttp import web
 
 from groza import GrozaUser, GrozaRequest, GrozaResponse
 from groza.instance import Groza
 from groza.utils import build_logger, json_serial
-
-
-class ServerProtocol(websockets.WebSocketServerProtocol):
-    async def process_request(self, path, request_headers):
-        if path == '/status/':
-            return http.HTTPStatus.OK, [], b'OK\n'
 
 
 class Connection:
@@ -30,8 +22,6 @@ class Connection:
         self.last_sub = {}
         self.global_params = {}
 
-    # self.handler.setup_data_db(dbname)
-
     async def handle_request(self, request):
         resp = {
             "response": request["counter"],
@@ -41,8 +31,8 @@ class Connection:
             resp.update({"status": "error", "message": "Invalid not integer counter"})
             return resp
 
-        if request.get("type") not in ("login", "sub", "auth", "register", "update", "insert"):
-            return {"status": "error", "message": "Invalid type"}
+        if request.get("type") not in ("login", "sub", "auth", "register", "update", "insert", "delete"):
+            return {"status": "error", "message": "Invalid type: %s" % request.get("type")}
 
         push_request = GrozaRequest(request)
 
@@ -72,6 +62,9 @@ class Connection:
             query = request["query"]
             insert = request["insert"]
             handle_resp = await self.handler.query_insert(self.user, query, insert)
+        elif req_type == "delete":
+            delete = request["delete"]
+            handle_resp = await self.handler.query_delete(self.user, delete)
         else:
             raise RuntimeError("Unhandled type %s" % req_type)
 
@@ -149,7 +142,9 @@ class Server:
         self._log.info("Started loop")
         while True:
             while not self._notifications.empty():
-                channel, obj_id = await self._notifications.get()
+                pid, channel, obj_id = await self._notifications.get()
+
+                # TODO: Don't send full sub on same pids
 
                 for conn in self.conns:
                     await conn.notify_change(channel, obj_id)

@@ -155,11 +155,24 @@ class Groza:
                     visor_name = query["visor"]
                     visor = self._get_visor(visor_name)
 
-                    await session.update(
-                        visor=visor,
-                        update=update,
-                        user=user
-                    )
+                    visor_instance = visor()
+                    result = await visor_instance.update(update=(query, upd), user=user, session=session)
+
+        return GrozaResponse({"status": "ok"})
+
+    async def query_delete(self, user, delete):
+        for cnt, delete_item in enumerate(delete):
+            visor_name = delete_item["visor"]
+            _ = self._get_visor(visor_name)
+
+        async with self._storage.session() as session:
+            async with session.transaction():
+                for cnt, delete_item in enumerate(delete):
+                    visor_name = delete_item["visor"]
+                    visor = self._get_visor(visor_name)
+
+                    visor_instance = visor()
+                    result = await visor_instance.delete(delete=delete_item, user=user, session=session)
 
         return GrozaResponse({"status": "ok"})
 

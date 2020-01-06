@@ -1,6 +1,7 @@
 from typing import Iterable
 from uuid import UUID
 
+from groza import GrozaUser
 from groza.storage.asyncpg.impl import _PostgresBackend, _PostgresConn
 from groza.utils import build_logger, FieldTransformer, CamelCaseFieldTransformer
 
@@ -88,30 +89,39 @@ class _AsyncpgSession(GrozaSession):
         return result
 
     async def update(self, *, visor, update, user):
-        for cnt, (query, upd) in enumerate(update):
-            idx = 1
-            args = ()
-            fields = []
-            for key, value in upd.items():
-                fields.append(f'"{self._to_db(key)}" = ${idx}')
-                args += (value,)
-                idx += 1
+        query, upd = update
 
-            last_updated_by_field = self._to_db("last_updated_by")
-            fields.append(f'"{last_updated_by_field}" = ${idx}')
-            args += (user.user_id,)
+        idx = 1
+        args = ()
+        fields = []
+        for key, value in upd.items():
+            fields.append(f'"{self._to_db(key)}" = ${idx}')
+            args += (value,)
             idx += 1
 
-            value_fields = ", ".join(fields)
+        last_updated_by_field = self._to_db("last_updated_by")
+        fields.append(f'"{last_updated_by_field}" = ${idx}')
+        args += (user.user_id,)
+        idx += 1
 
-            primary_key_field = visor.primary_key
+        value_fields = ", ".join(fields)
 
-            args += (query[primary_key_field],)
-            primary_key_idx = idx
+        primary_key_field = visor.primary_key
 
-            idx += 1
-            query_str = f'UPDATE {visor.table} set {value_fields} where "{primary_key_field}" = ${primary_key_idx}'
-            await self._conn.execute(query_str, *args)
+        args += (query[primary_key_field],)
+        primary_key_idx = idx
+
+        idx += 1
+        query_str = f'UPDATE {visor.table} set {value_fields} where "{primary_key_field}" = ${primary_key_idx}'
+        await self._conn.execute(query_str, *args)
+
+    async def delete(self, *, visor: "GrozaVisor", delete, user: GrozaUser):
+        q = (
+            Q.delete()
+             .from_(visor.table)
+             .where(visor.primary_key, delete[visor.primary_key])
+        )
+        await self._conn.execute(q)
 
     def transaction(self):
         return self._conn.transaction()
@@ -217,7 +227,7 @@ class AsyncpgStorage(GrozaStorage):
                      o hstore := hstore('');
                      n hstore := hstore('');
                     BEGIN 
-                     IF (TG_OP = 'delete') THEN
+                     IF (TG_OP = 'DELETE') THEN
                        INSERT INTO "{audit_table}" SELECT nextval('{audit_table_seq}'), OLD."{last_updated_by_field}", {use_int_key}, now(), 'D', '{table}', {use_var_key}, hstore(OLD), hstore('');
                        PERFORM pg_notify('{data_table}', OLD."{primary_key_field}"::text);
                        RETURN OLD;
@@ -249,13 +259,14 @@ class AsyncpgStorage(GrozaStorage):
 
                 await conn.execute(f"""
                    CREATE TRIGGER "{audit_table_trigger}"
-                       AFTER INSERT OR UPDATE OR delete ON "{table}"
+                       AFTER INSERT OR UPDATE OR DELETE ON "{table}"
                        FOR EACH ROW EXECUTE PROCEDURE "{audit_table_func}"()
                 """)
 
     def _notify(self, conn, pid, channel, message):
         obj_id = message
-        self._notifications.put_nowait((channel, obj_id))
+        # print(conn, pid, channel, message)
+        self._notifications.put_nowait((pid, channel, obj_id))
 
     @classmethod
     def _get_visors(cls) -> Iterable[GrozaVisor]:

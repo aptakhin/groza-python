@@ -1,5 +1,5 @@
 import contextvars
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from typing import Union
 
 from groza import GrozaUser
@@ -38,7 +38,7 @@ class GrozaInput(dict):
     pass
 
 
-class GrozaSession:
+class GrozaSession(ABC):
     @abstractmethod
     def transaction(self):
         pass
@@ -53,6 +53,10 @@ class GrozaSession:
 
     @abstractmethod
     async def update(self, *, visor: "GrozaVisor", update, user: GrozaUser):
+        pass
+
+    @abstractmethod
+    async def delete(self, *, visor: "GrozaVisor", delete, user: GrozaUser):
         pass
 
 
@@ -82,7 +86,6 @@ class GrozaVisor(metaclass=GrozaCreator):
     def __init__(self):
         pass
 
-    @abstractmethod
     async def ensure_permission(self, user: GrozaUser, action: GrozaAction, session):
         pass
 
@@ -91,6 +94,9 @@ class GrozaVisor(metaclass=GrozaCreator):
 
     async def update(self, update, user: GrozaUser, session: GrozaSession):
         return await session.update(visor=self, update=update, user=user)
+
+    async def delete(self, delete, user: GrozaUser, session: GrozaSession):
+        return await session.delete(visor=self, delete=delete, user=user)
 
 
 class GrozaForeignKey(GrozaVisor):
