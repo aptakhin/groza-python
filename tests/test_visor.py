@@ -4,9 +4,8 @@ import pytest
 
 from groza import GrozaUser
 from groza.instance import Groza
-from groza.storage import GrozaVisor, groza_db, GrozaVisors, groza_visors
+from groza.storage import GrozaVisor
 
-from tests.memory_storage import MemoryStorage
 from tests.schema import TTable, TSchema, TColumn, TType, TRow
 
 
@@ -14,13 +13,15 @@ def test_fetch_sub(groza_storage):
     schema = TSchema(
         tables=[
             TTable("accounts", [
-                TColumn("id", TType.INT8),
+                TColumn("id", TType.BIGSERIAL),
                 TColumn("name", TType.STR),
+                TColumn("last_updated_by", TType.INT8),
             ], data=[
-                TRow({"id": 1, "name": "aaa"}),
-                TRow( {"id": 2, "name": "bbb"}),
+                TRow({"id": 1, "name": "aaa", "last_updated_by": 1}),
+                TRow({"id": 2, "name": "bbb", "last_updated_by": 1}),
             ]),
-        ])
+        ]
+    )
 
     groza_storage.setup(schema)
 
@@ -46,11 +47,12 @@ def test_insert(groza_storage):
     schema = TSchema(
         tables=[
             TTable("accounts", [
-                TColumn("id", TType.INT8),
+                TColumn("id", TType.BIGSERIAL),
                 TColumn("name", TType.STR),
+                TColumn("last_updated_by", TType.INT8),
             ], data=[
-                TRow({"id": 1, "name": "aaa"}),
-                TRow({"id": 2, "name": "bbb"}),
+                TRow({"id": 1, "name": "aaa", "last_updated_by": 1}),
+                TRow({"id": 2, "name": "bbb", "last_updated_by": 1}),
             ]),
         ]
     )
@@ -76,11 +78,12 @@ def test_update(groza_storage):
     schema = TSchema(
         tables=[
             TTable("accounts", [
-                TColumn("id", TType.INT8),
+                TColumn("id", TType.BIGSERIAL),
                 TColumn("name", TType.STR),
+                TColumn("last_updated_by", TType.INT8),
             ], data=[
-                TRow({"id": 1, "name": "aaa"}),
-                TRow({"id": 2, "name": "bbb"}),
+                TRow({"id": 1, "name": "aaa", "last_updated_by": 1}),
+                TRow({"id": 2, "name": "bbb", "last_updated_by": 1}),
             ]),
         ]
     )
