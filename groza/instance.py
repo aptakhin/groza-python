@@ -42,10 +42,6 @@ class Groza:
         # user = self.auth.register(request)
         return GrozaResponse({}, request=request)
 
-    def _get_model(self, name) -> GrozaModel:
-        model = groza_models.get().require_model(name)
-        return model
-
     async def fetch_sub(self, user, all_sub):
         resp = {}
         data = {}
@@ -66,7 +62,7 @@ class Groza:
 
                 sub_desc_from = sub_desc.get("fromSub")
                 items, link_field = await session.query(
-                    model=model,
+                    visor=model,
                     from_sub=sub_desc_from,
                     where=sub_desc.get("where"),
                     order=sub_desc.get("order"),
@@ -136,14 +132,14 @@ class Groza:
         return GrozaResponse(resp)
 
     async def query_insert(self, user, query, insert):
-        resp = {}
-        table = query["table"]
-        if table not in self.tables:
-            return GrozaResponse({"errors": [f"Table '{table}' is not handled"]})
+        model_name = query["model"]
+        model = self._get_model(model_name)
+        # if table not in self.tables:
+        #     return GrozaResponse({"errors": [f"Table '{table}' is not handled"]})
 
         async with self._storage.session() as session:
             result = await session.insert(
-                model=model,
+                visor=model,
                 insert=insert,
                 user=user
             )
@@ -151,45 +147,31 @@ class Groza:
         if not result:
             return GrozaResponse({"status": "error", "message": "No result"})
 
-        return GrozaResponse({"status": "ok", primary_key: result[primary_key]})
+        return GrozaResponse({"status": "ok", model.primary_key: result[model.primary_key]})
 
     async def query_update(self, user, update):
         for cnt, (query, upd) in enumerate(update):
-            table = query["table"]
-            if table not in self.tables:
-                return GrozaResponse({"errors": [f"Table '{table}' in #{cnt} row is not handled"]})
+            model_name = query["model"]
+            _ = self._get_model(model_name)
 
-        async with self.data_db.pool.acquire() as conn:
-            async with conn.transaction():
+        async with self._storage.session() as session:
+            async with session.transaction():
                 for cnt, (query, upd) in enumerate(update):
-                    table = query["table"]
-                    desc = self.tables[table]
+                    model_name = query["model"]
+                    visor = self._get_model(model_name)
 
-                    idx = 1
-                    args = ()
-                    fields = []
-                    for key, value in upd.items():
-                        fields.append(f'"{self._to_db(key)}" = ${idx}')
-                        args += (value,)
-                        idx += 1
-
-                    last_updated_by_field = self._to_db("last_updated_by")
-                    fields.append(f'"{last_updated_by_field}" = ${idx}')
-                    args += (user.user_id,)
-                    idx += 1
-
-                    value_fields = ", ".join(fields)
-
-                    primary_key_field = desc[0]
-
-                    args += (query[primary_key_field],)
-                    primary_key_idx = idx
-
-                    idx += 1
-                    query_str = f'UPDATE {table} SET {value_fields} WHERE "{primary_key_field}" = ${primary_key_idx}'
-                    await conn.execute(query_str, *args)
+                    await session.update(
+                        visor=visor,
+                        update=update,
+                        user=user
+                    )
 
         return GrozaResponse({"status": "ok"})
+
+    @classmethod
+    def _get_model(cls, name) -> GrozaModel:
+        model = groza_models.get().require_model(name)
+        return model
 
     def _from_db(self, field):
         return self._field_transformer.from_db(field)

@@ -1,10 +1,11 @@
 import asyncio
+from typing import Iterable
 
 from groza.storage.asyncpg.impl import _PostgresBackend, _PostgresConn
 from groza.storage.asyncpg.q import Q
 from groza.utils import build_logger, FieldTransformer, CamelCaseFieldTransformer
 
-from groza.storage import BaseStorage, BaseSession, groza_models
+from groza.storage import BaseStorage, BaseSession, groza_models, GrozaModel
 
 
 class _AsyncpgSession(BaseSession):
@@ -13,8 +14,8 @@ class _AsyncpgSession(BaseSession):
         self._log = log
         self._field_transformer: FieldTransformer = CamelCaseFieldTransformer()
 
-    async def query(self, *, model, from_sub, all_sub, sub_resp, where=None, order=None):
-        q = Q.SELECT().FROM(model.table)
+    async def query(self, *, visor, from_sub, all_sub, sub_resp, where=None, order=None):
+        q = Q.SELECT().FROM(visor.table)
 
         # primary_key_field = sub_table[0]
 
@@ -28,7 +29,7 @@ class _AsyncpgSession(BaseSession):
 
             link_field = sub_table[1].get(link_table)
             if not link_field:
-                raise RuntimeError(f"Link '{model.table}'=>'{link_table}' not found")
+                raise RuntimeError(f"Link '{visor.table}'=>'{link_table}' not found")
 
             link_field = link_field[0]
 
@@ -47,18 +48,13 @@ class _AsyncpgSession(BaseSession):
 
         return items, link_field
 
-    async def insert(self, *, model, insert, user):
-        # desc = self.tables[table]
-
+    async def insert(self, *, visor, insert, user):
         idx = 1
         args = ()
         own_fields = []
         own_values = []
 
         for key, value in insert.items():
-            if key == desc[0]:
-                continue
-
             own_fields.append(f'"{self._to_db(key)}"')
             own_values.append(f"${idx}")
             args += (value,)
@@ -73,12 +69,41 @@ class _AsyncpgSession(BaseSession):
         own_fields_str = ", ".join(own_fields)
         own_values_str = ", ".join(own_values)
 
-        primary_key = model.primary_key
+        primary_key = visor.primary_key
 
-        query = f'INSERT INTO {model.table} ({own_fields_str}) VALUES ({own_values_str}) RETURNING "{primary_key}"'
+        query = f'INSERT INTO {visor.table} ({own_fields_str}) VALUES ({own_values_str}) RETURNING "{primary_key}"'
         result = await self._conn.fetchrow(query, *args)
 
         return result
+
+    async def update(self, *, visor, update, user):
+        for cnt, (query, upd) in enumerate(update):
+            idx = 1
+            args = ()
+            fields = []
+            for key, value in upd.items():
+                fields.append(f'"{self._to_db(key)}" = ${idx}')
+                args += (value,)
+                idx += 1
+
+            last_updated_by_field = self._to_db("last_updated_by")
+            fields.append(f'"{last_updated_by_field}" = ${idx}')
+            args += (user.user_id,)
+            idx += 1
+
+            value_fields = ", ".join(fields)
+
+            primary_key_field = visor.primary_key
+
+            args += (query[primary_key_field],)
+            primary_key_idx = idx
+
+            idx += 1
+            query_str = f'UPDATE {visor.table} SET {value_fields} WHERE "{primary_key_field}" = ${primary_key_idx}'
+            await self._conn.execute(query_str, *args)
+
+    def transaction(self):
+        return self._conn.transaction()
 
     async def __aenter__(self):
         return _PostgresConn(await self._conn.__aenter__(), logger=self._log)
@@ -91,8 +116,6 @@ class _AsyncpgSession(BaseSession):
 
     def _to_db(self, field):
         return self._field_transformer.to_db(field)
-    # def _create(self, dsn):
-    #     self._backend = _PostgresBackend(dsn)
 
 
 class _AsyncpgSessionProxy:
@@ -121,7 +144,7 @@ class AsyncpgStorage(BaseStorage):
 
         self._notif_conn = await self._backend.pool.acquire()
 
-        for model in groza_models.get()._models_dict.values():
+        for model in self._get_models():
             await self._notif_conn.add_listener(model.table, self._notify)
 
     def session(self):
@@ -129,15 +152,6 @@ class AsyncpgStorage(BaseStorage):
 
     def release(self, session: _AsyncpgSession):
         self._backend.release(session)
-
-    def _notify(self, conn, pid, channel, message):
-        obj_id = message
-        self._notifications.put_nowait((channel, obj_id))
-
-
-
-        # async def add_loop(self, app):
-        #     app['db_notif_listener'] = asyncio.create_task(self.loop())
 
     async def start_tables(self):
         audit_table = "groza_audit"
@@ -161,7 +175,7 @@ class AsyncpgStorage(BaseStorage):
                 );
             """)
 
-            for model in groza_models.get()._models_dict.values():
+            for model in self._get_models():
                 lower_table = model.table.lower()
                 audit_prefix_table = f"{lower_table}_audit"
                 audit_table_func = f"{audit_prefix_table}_func"
@@ -224,3 +238,11 @@ class AsyncpgStorage(BaseStorage):
                        AFTER INSERT OR UPDATE OR DELETE ON "{table}"
                        FOR EACH ROW EXECUTE PROCEDURE "{audit_table_func}"()
                 """)
+
+    def _notify(self, conn, pid, channel, message):
+        obj_id = message
+        self._notifications.put_nowait((channel, obj_id))
+
+    @classmethod
+    def _get_models(cls) -> Iterable[GrozaModel]:
+        return groza_models.get()._models_dict.values()
