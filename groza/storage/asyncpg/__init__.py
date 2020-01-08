@@ -3,7 +3,8 @@ from uuid import UUID
 
 from groza import GrozaUser
 from groza.storage.asyncpg.impl import _PostgresBackend, _PostgresConn
-from groza.utils import build_logger, FieldTransformer, CamelCaseFieldTransformer
+from groza.utils import build_logger, FieldTransformer, \
+    CamelCaseFieldTransformer
 
 from groza.storage import GrozaStorage, GrozaSession, groza_visors, GrozaVisor
 from pssq import Q
@@ -15,7 +16,8 @@ class AsyncpgSession(GrozaSession):
         self._log = log
         self._field_transformer: FieldTransformer = CamelCaseFieldTransformer()
 
-    async def query(self, *, visor, from_sub, all_sub, sub_resp, where=None, order=None):
+    async def query(self, *, visor, from_sub, all_sub, sub_resp,
+                    where=None, order=None):
         q = Q.select().from_(visor.table)
 
         # primary_key_field = sub_table[0]
@@ -24,13 +26,15 @@ class AsyncpgSession(GrozaSession):
         sub_desc_from = from_sub
         if sub_desc_from is not None:
             if sub_desc_from not in sub_resp:
-                raise RuntimeError(f"Link '{sub_desc_from}' not found in results. Check identifiers and order")
+                raise RuntimeError(f"Link '{sub_desc_from}' not found "
+                                   f"in results. Check identifiers and order")
 
             link_table = all_sub[sub_desc_from]["table"]
 
             link_field = sub_table[1].get(link_table)
             if not link_field:
-                raise RuntimeError(f"Link '{visor.table}'=>'{link_table}' not found")
+                raise RuntimeError(f"Link '{visor.table}'=>'{link_table}' "
+                                   f"not found")
 
             link_field = link_field[0]
 
@@ -56,7 +60,8 @@ class AsyncpgSession(GrozaSession):
         def make_item(item: dict):
             return {self._from_db(k): v for k, v in item.items()}
 
-        add_data = {make_key(item[primary_key_field]): make_item(item) for item in items}
+        add_data = {make_key(item[primary_key_field]): make_item(item)
+                    for item in items}
 
         return add_data, link_field
 
@@ -83,7 +88,8 @@ class AsyncpgSession(GrozaSession):
 
         primary_key = visor.primary_key
 
-        query = f'INSERT INTO {visor.table} ({own_fields_str}) VALUES ({own_values_str}) RETURNING "{primary_key}"'
+        query = f'INSERT INTO {visor.table} ({own_fields_str}) ' \
+            f'VALUES ({own_values_str}) RETURNING "{primary_key}"'
         result = await self._conn.fetchrow(query, *args)
 
         return result
@@ -112,7 +118,8 @@ class AsyncpgSession(GrozaSession):
         primary_key_idx = idx
 
         idx += 1
-        query_str = f'UPDATE {visor.table} set {value_fields} where "{primary_key_field}" = ${primary_key_idx}'
+        query_str = f'UPDATE {visor.table} SET {value_fields} ' \
+            f'WHERE "{primary_key_field}" = ${primary_key_idx}'
         await self._conn.execute(query_str, *args)
 
     async def delete(self, *, visor: "GrozaVisor", delete, user: GrozaUser):
@@ -183,7 +190,8 @@ class AsyncpgStorage(GrozaStorage):
         changed_by_field = f"updatedBy"
 
         async with self._backend.pool.acquire() as conn:
-            await conn.execute(f'CREATE SEQUENCE IF NOT EXISTS "{audit_table_seq}"')
+            await conn.execute(f'CREATE SEQUENCE IF NOT EXISTS '
+                               f'"{audit_table_seq}"')
 
             await conn.execute(f"""
                 CREATE TABLE IF NOT EXISTS "{audit_table}" (
