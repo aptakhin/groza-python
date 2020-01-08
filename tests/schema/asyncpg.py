@@ -24,7 +24,8 @@ class AsyncpgSchemaExecutor:
         async with self._storage.session() as session:
             async with session.transaction():
                 table = self._schema.tables[table_name]
-                result = await session.raw_conn().fetch(Q.select().from_(table.name).order(order_field, 1))
+                result = await (session.raw_conn().fetch(Q.select().
+                                 from_(table.name).order(order_field, 1)))
                 return [dict(res) for res in result]
 
     @classmethod

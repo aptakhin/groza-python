@@ -14,7 +14,10 @@ Windows installation:
     venv/Scripts/pip install --upgrade pip
     venv/Scripts/pip install -r ./requirements.txt
 
-Postgres SQL init:
+PostgreSQL database `hstore` extension required:
 
     CREATE EXTENSION hstore;
    
+    
+    venv/bin/pip install pytest-pep8 
+    PYTHONPATH=. venv/bin/py.test --pep8

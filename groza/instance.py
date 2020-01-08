@@ -175,4 +175,3 @@ class Groza:
     def _get_visor(cls, name) -> GrozaVisor:
         model = groza_visors.get().require_visor(name)
         return model
-
