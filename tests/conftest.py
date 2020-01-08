@@ -8,7 +8,7 @@ from groza.storage import groza_db, groza_visors, GrozaVisors
 from groza.storage.asyncpg import AsyncpgStorage
 from tests.storage.memory import MemoryStorage
 from tests.schema import TSchema
-from tests.storage.asyncpg import AsyncpgSchemaExecutor
+from tests.schema.asyncpg import AsyncpgSchemaExecutor
 
 
 class PytestMemoryStorage:
@@ -40,10 +40,14 @@ class PytestAsyncpgStorage:
         pg_test_dsn = os.getenv("POLAR_SITE_BE_TEST_POSTGRES_DSN")
 
         self._storage = AsyncpgStorage(pg_test_dsn, self._notifications)
+
         self._schema = None
+        self._schema_exec = None
 
     def setup(self, schema: TSchema):
         self._schema = schema
+        self._schema_exec = AsyncpgSchemaExecutor(self._storage, self._schema)
+
         asyncio.get_event_loop().run_until_complete(self._start_async())
 
         groza_db.set(self._storage)
@@ -51,22 +55,20 @@ class PytestAsyncpgStorage:
 
     async def _start_async(self):
         await self._storage.connect()
-        await AsyncpgSchemaExecutor.apply(self._storage, self._schema)
+        await self._schema_exec.apply()
         await self._storage.start_tables()
 
     def destroy(self):
-        print("Cleaning up")
-        asyncio.get_event_loop().run_until_complete(AsyncpgSchemaExecutor.destroy(self._storage, self._schema))
+        asyncio.get_event_loop().run_until_complete(self._schema_exec.destroy())
 
     def query(self, table_name, order_field):
-        return asyncio.get_event_loop().run_until_complete(AsyncpgSchemaExecutor.query(self._storage, self._schema, table_name, order_field))
+        return asyncio.get_event_loop().run_until_complete(self._schema_exec.query(table_name, order_field))
 
 
 
 @pytest.fixture(scope="function", params=[PytestMemoryStorage, PytestAsyncpgStorage])
 def groza_storage(request):
     groza_storage = request.param()
-    print("Z", groza_storage)
 
     yield groza_storage
 

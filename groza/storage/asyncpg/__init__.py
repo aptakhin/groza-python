@@ -9,7 +9,7 @@ from groza.storage import GrozaStorage, GrozaSession, groza_visors, GrozaVisor
 from pssq import Q
 
 
-class _AsyncpgSession(GrozaSession):
+class AsyncpgSession(GrozaSession):
     def __init__(self, *, conn: "_PostgresPoolProxy", log):
         self._conn = conn
         self._log = log
@@ -83,7 +83,7 @@ class _AsyncpgSession(GrozaSession):
 
         primary_key = visor.primary_key
 
-        query = f'INSERT INTO {visor.table} ({own_fields_str}) VALUES ({own_values_str}) returning "{primary_key}"'
+        query = f'INSERT INTO {visor.table} ({own_fields_str}) VALUES ({own_values_str}) RETURNING "{primary_key}"'
         result = await self._conn.fetchrow(query, *args)
 
         return result
@@ -148,7 +148,7 @@ class _AsyncpgSessionProxy:
         self._log = log
 
     async def __aenter__(self):
-        return _AsyncpgSession(conn=await self._conn.__aenter__(), log=self._log)
+        return AsyncpgSession(conn=await self._conn.__aenter__(), log=self._log)
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         return await self._conn.__aexit__(exc_type, exc_val, exc_tb)
@@ -174,7 +174,7 @@ class AsyncpgStorage(GrozaStorage):
     def session(self):
         return _AsyncpgSessionProxy(conn=self._backend.acquire(), log=self._log)
 
-    def release(self, session: _AsyncpgSession):
+    def release(self, session: AsyncpgSession):
         self._backend.release(session)
 
     async def start_tables(self):
