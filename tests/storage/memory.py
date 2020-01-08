@@ -1,5 +1,3 @@
-from abc import abstractmethod
-
 from groza import GrozaUser
 from groza.storage import GrozaStorage, GrozaSession, GrozaVisor, GrozaInput
 
@@ -30,18 +28,21 @@ class MemorySession(GrozaSession):
     def raw_conn(self):
         pass
 
-    async def insert(self, *, visor: GrozaVisor, insert: GrozaInput, user: GrozaUser):
+    async def insert(self, *, visor: GrozaVisor, insert: GrozaInput,
+                     user: GrozaUser):
         visor_data = self._schema.tables[visor.table].data
 
         insert_data = {**insert}
-        insert_data[visor.primary_key] = max(d['id'] for d in visor_data) + 1 if visor_data else 1
+        insert_data[visor.primary_key] = max(d['id'] for d in visor_data) + 1 \
+            if visor_data else 1
         self._schema.tables[visor.table].data.append(insert_data)
         return insert_data
 
     async def update(self, *, visor: GrozaVisor, update, user: GrozaUser):
         visor_data = self._schema.tables[visor.table].data
         query, upd = update
-        search = [cnt for cnt, d in enumerate(visor_data) if d[visor.primary_key] == query[visor.primary_key]]
+        search = [cnt for cnt, d in enumerate(visor_data)
+                  if d[visor.primary_key] == query[visor.primary_key]]
         if not search:
             return
         idx = search[0]
@@ -50,7 +51,8 @@ class MemorySession(GrozaSession):
     async def delete(self, *, visor: 'GrozaVisor', delete, user: GrozaUser):
         pass
 
-    async def query(self, *, visor: GrozaVisor, from_sub: dict, all_sub: dict, sub_resp: dict, where=None, order=None):
+    async def query(self, *, visor: GrozaVisor, from_sub: dict, all_sub: dict,
+                    sub_resp: dict, where=None, order=None):
         visor_data = self._schema.tables[visor.table].data
 
         add_data = {}

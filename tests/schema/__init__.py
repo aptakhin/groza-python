@@ -26,7 +26,10 @@ class TRow(dict):
 
 
 class TTable:
-    def __init__(self, name: str, columns: List[TColumn], data: Optional[List[TRow]]=None):
+    def __init__(self,
+                 name: str,
+                 columns: List[TColumn],
+                 data: Optional[List[TRow]]=None):
         self.name = name
         self.columns = columns
         self.data = data

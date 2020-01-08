@@ -1,10 +1,7 @@
-import asyncio
 import json
 from abc import abstractmethod, ABC
 from collections import OrderedDict
 from typing import List, Optional
-
-from aiohttp import web
 
 from groza import GrozaUser, GrozaRequest, GrozaResponse
 from groza.queue import BaseQueue
@@ -29,8 +26,10 @@ class GrozaServerConnection:
             'responseQueryId': request['queryId'],
         }
 
-        if request.get('type') not in ('login', 'sub', 'auth', 'register', 'update', 'insert', 'delete'):
-            return {'status': 'error', 'message': 'Invalid type: %s' % request.get('type')}
+        if request.get('type') not in ('login', 'sub', 'auth', 'register',
+                                       'update', 'insert', 'delete'):
+            return {'status': 'error', 'message': 'Invalid type: %s' %
+                                                  request.get('type')}
 
         push_request = GrozaRequest(request)
 
@@ -49,7 +48,8 @@ class GrozaServerConnection:
                 self.user.user_id = handle_resp.data['userId']
         elif req_type == 'sub':
             if 'sub' not in request or not isinstance(request['sub'], dict):
-                return GrozaResponse({'status': 'error', 'message': 'Invalid not dict sub'})
+                return GrozaResponse({'status': 'error',
+                                      'message': 'Invalid not dict sub'})
             self.all_sub = request['sub']
             handle_resp = await self.handler.fetch_sub(self.user, self.all_sub)
             self.last_sub = handle_resp.data['sub']
@@ -59,7 +59,8 @@ class GrozaServerConnection:
         elif req_type == 'insert':
             query = request['query']
             insert = request['insert']
-            handle_resp = await self.handler.query_insert(self.user, query, insert)
+            handle_resp = await self.handler.query_insert(
+                self.user, query, insert)
         elif req_type == 'delete':
             delete = request['delete']
             handle_resp = await self.handler.query_delete(self.user, delete)
@@ -74,13 +75,15 @@ class GrozaServerConnection:
         async for message in await self.ws.get_messages():
             try:
                 self.log.debug(f'Req : {message}')
-                request = json.loads(message.data, object_pairs_hook=OrderedDict)
+                request = json.loads(message.data,
+                                     object_pairs_hook=OrderedDict)
 
                 handler_resp = await self.handle_request(request)
 
                 await self.send(handler_resp)
             except:
-                self.log.exception('Exception handling message: %s' % message.data)
+                self.log.exception('Exception handling message: %s' %
+                                   message.data)
 
     async def send(self, resp):
         js = json.dumps(resp, default=json_serial)
@@ -157,4 +160,3 @@ class SimpleGrozaServer(GrozaServer):
     async def notify_change(self, pid, channel, obj_id):
         for conn in self._conns:
             await conn.notify_change(channel, obj_id)
-

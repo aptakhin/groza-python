@@ -1,23 +1,9 @@
-import asyncio
-import hashlib
 from uuid import UUID
 
-from groza import GrozaUser, GrozaRequest, GrozaResponse
+from groza import GrozaRequest, GrozaResponse
 from groza.auth.debug import DebugAuth
 
 from groza.storage import GrozaStorage, groza_db, groza_visors, GrozaVisor
-
-SECRET_KEY = ";!FC,gvn58QUHok}ZKb]23.iXE<01?MkRVz-YL>T:iU6tlS89'yWaY&b_NE?5xsM"
-
-
-def hashit(passw):
-    if not passw:
-        raise ValueError('Empty password')
-    # if len(passw) < 6:
-    #     raise ValueError('Too short password')
-    m = hashlib.sha3_256()
-    m.update((SECRET_KEY + passw).encode())
-    return m.hexdigest()
 
 
 class GrozaHandler:
@@ -30,7 +16,8 @@ class GrozaHandler:
         user = self._auth.register(request)
 
         return GrozaResponse({}, request=request)
-        # return {'status': 'ok', 'token': token, 'userId': auth['userId'], 'type': 'register'}
+        # return {'status': 'ok', 'token': token,
+        # 'userId': auth['userId'], 'type': 'register'}
 
     async def login(self, request: GrozaRequest) -> GrozaResponse:
         user = self._auth.login(request)
@@ -81,10 +68,12 @@ class GrozaHandler:
                 data[table].update(add_data)
 
                 ids = []
-                recursive_field, recursive_inject = sub_desc.get('recursive', (None, None))
+                recursive_field, recursive_inject = sub_desc.get('recursive',
+                                                                 (None, None))
 
                 assert (recursive_field is None and recursive_inject is None
-                     or recursive_field is not None and recursive_inject is not None)
+                     or recursive_field is not None
+                        and recursive_inject is not None)
 
                 if recursive_field:
                     for key in add_data.keys():
@@ -94,7 +83,8 @@ class GrozaHandler:
                     if recursive_field and item.get(recursive_field):
                         inject_to = data[table][item[recursive_field]]
                         inject_to.setdefault(recursive_inject, [])
-                        inject_to[recursive_inject].append(item[primary_key_field])
+                        inject_to[recursive_inject].append(
+                            item[primary_key_field])
                         continue
 
                     ids.append(make_key(item[primary_key_field]))
@@ -128,16 +118,19 @@ class GrozaHandler:
         visor_name = query['visor']
         visor = self._get_visor(visor_name)
         # if table not in self.tables:
-        #     return GrozaResponse({'errors': [f'Table '{table}' is not handled']})
+        #     return GrozaResponse({'errors':
+        #     [f'Table '{table}' is not handled']})
 
         async with self._storage.session() as session:
             visor_instance = visor()
-            result = await visor_instance.insert(insert=insert, user=user, session=session)
+            result = await visor_instance.insert(
+                insert=insert, user=user, session=session)
 
         if not result:
             return GrozaResponse({'status': 'error', 'message': 'No result'})
 
-        return GrozaResponse({'status': 'ok', visor.primary_key: result[visor.primary_key]})
+        return GrozaResponse({'status': 'ok',
+                              visor.primary_key: result[visor.primary_key]})
 
     async def query_update(self, user, update):
         for cnt, (query, upd) in enumerate(update):
@@ -151,7 +144,8 @@ class GrozaHandler:
                     visor = self._get_visor(visor_name)
 
                     visor_instance = visor()
-                    result = await visor_instance.update(update=(query, upd), user=user, session=session)
+                    result = await visor_instance.update(
+                        update=(query, upd), user=user, session=session)
 
         return GrozaResponse({'status': 'ok'})
 
@@ -167,7 +161,8 @@ class GrozaHandler:
                     visor = self._get_visor(visor_name)
 
                     visor_instance = visor()
-                    result = await visor_instance.delete(delete=delete_item, user=user, session=session)
+                    result = await visor_instance.delete(
+                        delete=delete_item, user=user, session=session)
 
         return GrozaResponse({'status': 'ok'})
 

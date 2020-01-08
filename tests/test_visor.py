@@ -33,7 +33,8 @@ def test_fetch_sub(groza_storage):
     subscription = {
         'allAccounts': {'visor': 'Account'},
     }
-    resp = asyncio.get_event_loop().run_until_complete(groza.fetch_sub(GrozaUser(user_id=1), subscription))
+    resp = asyncio.get_event_loop().run_until_complete(groza.fetch_sub(
+        GrozaUser(user_id=1), subscription))
     data = resp.data['data']
     sub = resp.data['sub']
 
@@ -70,7 +71,8 @@ def test_insert(groza_storage):
     insert = {
         'name': 'ccc',
     }
-    resp = asyncio.get_event_loop().run_until_complete(groza.query_insert(user=GrozaUser(user_id=1), query=query, insert=insert))
+    resp = asyncio.get_event_loop().run_until_complete(groza.query_insert(
+        user=GrozaUser(user_id=1), query=query, insert=insert))
     assert resp.data['id'] == 3
 
 
@@ -97,7 +99,8 @@ def test_update(groza_storage):
     update = [
         [{'visor': 'Account', 'id': 1}, {'name': 'aaa1'}],
     ]
-    resp = asyncio.get_event_loop().run_until_complete(groza.query_update(user=GrozaUser(user_id=1), update=update))
+    resp = asyncio.get_event_loop().run_until_complete(groza.query_update(
+        user=GrozaUser(user_id=1), update=update))
     assert resp.data['status'] == 'ok'
 
     data = groza_storage.query('accounts', order_field='id')

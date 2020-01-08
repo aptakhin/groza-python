@@ -72,7 +72,8 @@ class PytestAsyncpgStorage:
         asyncio.get_event_loop().run_until_complete(self._schema_exec.destroy())
 
     def query(self, table_name, order_field):
-        return asyncio.get_event_loop().run_until_complete(self._schema_exec.query(table_name, order_field))
+        return asyncio.get_event_loop().run_until_complete(
+            self._schema_exec.query(table_name, order_field))
 
 
 @pytest.fixture(scope='function', params=[PytestMemoryStorage, PytestAsyncpgStorage])

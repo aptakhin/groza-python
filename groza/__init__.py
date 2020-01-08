@@ -1,5 +1,3 @@
-import contextvars
-
 
 class GrozaUser:
     def __init__(self, auth_token=None, user_id=None):
@@ -20,4 +18,3 @@ class GrozaResponse:
     @property
     def data(self):
         return self._data
-

@@ -20,7 +20,8 @@ class GrozaCreator(type):
             groza_visors.set(GrozaVisors())
         models: GrozaVisors = groza_visors.get()
 
-        if bases and name not in models._visors_dict and name not in ('GrozaForeignKey',):
+        if bases and name not in models._visors_dict \
+                and name not in ('GrozaForeignKey',):
             models._visors_dict[name] = instance
 
         def get_value(*_):
@@ -48,7 +49,8 @@ class GrozaSession(ABC):
         pass
 
     @abstractmethod
-    async def insert(self, *, visor: 'GrozaVisor', insert: GrozaInput, user: GrozaUser):
+    async def insert(self, *, visor: 'GrozaVisor',
+                     insert: GrozaInput, user: GrozaUser):
         pass
 
     @abstractmethod
@@ -86,10 +88,16 @@ class GrozaVisor(metaclass=GrozaCreator):
     def __init__(self):
         pass
 
-    async def ensure_permission(self, user: GrozaUser, action: GrozaAction, session):
+    async def ensure_permission(self,
+                                user: GrozaUser,
+                                action: GrozaAction,
+                                session):
         pass
 
-    async def insert(self, insert: GrozaInput, user: GrozaUser, session: GrozaSession):
+    async def insert(self,
+                     insert: GrozaInput,
+                     user: GrozaUser,
+                     session: GrozaSession):
         return await session.insert(visor=self, insert=insert, user=user)
 
     async def update(self, update, user: GrozaUser, session: GrozaSession):

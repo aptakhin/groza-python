@@ -40,4 +40,3 @@ class Groza:
                     await server.notify_change(pid, channel, obj_id)
 
             await asyncio.sleep(0.3)
-
