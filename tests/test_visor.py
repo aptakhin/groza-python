@@ -69,7 +69,6 @@ def test_insert(groza_storage):
     }
     insert = {
         "name": "ccc",
-        # "last_updated_by": 1,
     }
     resp = asyncio.get_event_loop().run_until_complete(groza.query_insert(user=GrozaUser(user_id=1), query=query, insert=insert))
     assert resp.data["id"] == 3

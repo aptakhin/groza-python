@@ -12,6 +12,10 @@ from tests.schema.asyncpg import AsyncpgSchemaExecutor
 
 
 class PytestMemoryStorage:
+    """
+    Pytest storage wrapper around memory storage
+    """
+
     def __init__(self):
         groza_db.set(MemoryStorage())
         groza_visors.set(GrozaVisors())
@@ -34,12 +38,15 @@ class PytestMemoryStorage:
 
 
 class PytestAsyncpgStorage:
+    """
+    Applies Postgres storage tables to test database.
+    """
+
     def __init__(self):
         self._notifications = asyncio.Queue()
 
-        pg_test_dsn = os.getenv("POLAR_SITE_BE_TEST_POSTGRES_DSN")
-
-        self._storage = AsyncpgStorage(pg_test_dsn, self._notifications)
+        postgres_test_dsn = os.getenv("POLAR_SITE_BE_TEST_POSTGRES_DSN")
+        self._storage = AsyncpgStorage(postgres_test_dsn, self._notifications)
 
         self._schema = None
         self._schema_exec = None
@@ -63,7 +70,6 @@ class PytestAsyncpgStorage:
 
     def query(self, table_name, order_field):
         return asyncio.get_event_loop().run_until_complete(self._schema_exec.query(table_name, order_field))
-
 
 
 @pytest.fixture(scope="function", params=[PytestMemoryStorage, PytestAsyncpgStorage])
