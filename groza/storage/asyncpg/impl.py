@@ -22,7 +22,7 @@ class _PostgresConn:
             query, args = _prepare(query, args)
             await self.conn.execute(query, *args)
         except:
-            self.logger.exception("Error in db execute: %s; %s" % (query, args))
+            self.logger.exception('Error in db execute: %s; %s' % (query, args))
             raise
 
     async def executemany(self, query, args):
@@ -30,7 +30,7 @@ class _PostgresConn:
             query, args = _prepare(query, args)
             await self.conn.executemany(query, args)
         except:
-            self.logger.exception("Error in db executemany: %s; %s" % (query, args))
+            self.logger.exception('Error in db executemany: %s; %s' % (query, args))
             raise
 
     async def fetch(self, query, *args):
@@ -38,7 +38,7 @@ class _PostgresConn:
             query, args = _prepare(query, args)
             return await self.conn.fetch(query, *args)
         except:
-            self.logger.exception("Error in db fetch: %s; %s" % (query, args))
+            self.logger.exception('Error in db fetch: %s; %s' % (query, args))
             raise
 
     async def fetchrow(self, query, *args):
@@ -46,7 +46,7 @@ class _PostgresConn:
             query, args = _prepare(query, args)
             return await self.conn.fetchrow(query, *args)
         except:
-            self.logger.exception("Error in db fetchrow: %s; %s" % (query, args))
+            self.logger.exception('Error in db fetchrow: %s; %s' % (query, args))
             raise
 
     async def fetchval(self, query, *args):
@@ -54,7 +54,7 @@ class _PostgresConn:
             query, args = _prepare(query, args)
             return await self.conn.fetchval(query, *args)
         except:
-            self.logger.exception("Error in db fetchval: %s; %s" % (query, args))
+            self.logger.exception('Error in db fetchval: %s; %s' % (query, args))
             raise
 
     async def executemany(self, query, args):
@@ -62,7 +62,7 @@ class _PostgresConn:
             query, args = _prepare(query, args)
             await self.conn.executemany(query, args)
         except:
-            self.logger.exception("Error in db executemany: %s; %s" % (query, args))
+            self.logger.exception('Error in db executemany: %s; %s' % (query, args))
             raise
 
     async def executebatch(self, buildQuery, args, pagesize=5000, conn=None):
@@ -82,7 +82,7 @@ class _PostgresConn:
             try:
                 await conn.execute(query, *queryArgs)
             except:
-                self.logger.exception("Error in db query: %s; %s" % (query, queryArgs))
+                self.logger.exception('Error in db query: %s; %s' % (query, queryArgs))
                 raise
 
     def transaction(self):
@@ -103,7 +103,7 @@ class _PostgresPoolProxy:
 
 class _PostgresBackend:
     def __init__(self, dsn: str):
-        self.log = build_logger("DB")
+        self.log = build_logger('DB')
         self.pool: asyncpg.Pool = None
         self.dsn: str = dsn
 
@@ -117,50 +117,50 @@ class _PostgresBackend:
         if isinstance(query, Q):
             query, args = query.end()
         try:
-            self.log.debug("db execute: %s; %s", query, args)
+            self.log.debug('db execute: %s; %s', query, args)
             await self.pool.execute(query, *args)
         except:
-            self.log.exception("Error in db execute: %s; %s" % (query, args))
+            self.log.exception('Error in db execute: %s; %s' % (query, args))
             raise
 
     async def executemany(self, query, args):
         if isinstance(query, Q):
             query, args = query.end()
         try:
-            self.log.debug("db executemany: %s; %s", query, args)
+            self.log.debug('db executemany: %s; %s', query, args)
             await self.pool.executemany(query, args)
         except:
-            self.log.exception("Error in db executemany: %s; %s" % (query, args))
+            self.log.exception('Error in db executemany: %s; %s' % (query, args))
             raise
 
     async def fetch(self, query, *args):
         if isinstance(query, Q):
             query, args = query.end()
         try:
-            self.log.debug("db fetch: %s; %s", query, args)
+            self.log.debug('db fetch: %s; %s', query, args)
             return await self.pool.fetch(query, *args)
         except:
-            self.log.exception("Error in db fetch: %s; %s" % (query, args))
+            self.log.exception('Error in db fetch: %s; %s' % (query, args))
             raise
 
     async def fetchrow(self, query, *args):
         if isinstance(query, Q):
             query, args = query.end()
         try:
-            self.log.debug("db fetchrow: %s; %s", query, args)
+            self.log.debug('db fetchrow: %s; %s', query, args)
             return await self.pool.fetchrow(query, *args)
         except:
-            self.log.exception("Error in db fetchrow: %s; %s" % (query, args))
+            self.log.exception('Error in db fetchrow: %s; %s' % (query, args))
             raise
 
     async def fetchval(self, query, *args):
         if isinstance(query, Q):
             query, args = query.end()
         try:
-            self.log.debug("db fetchval: %s; %s", query, args)
+            self.log.debug('db fetchval: %s; %s', query, args)
             return await self.pool.fetchval(query, *args)
         except:
-            self.log.exception("Error in db fetchval: %s; %s" % (query, args))
+            self.log.exception('Error in db fetchval: %s; %s' % (query, args))
             raise
 
     def acquire(self):

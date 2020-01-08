@@ -17,7 +17,7 @@ class AsyncpgSchemaExecutor:
         async with self._storage.session() as session:
             async with session.transaction():
                 for table in self._schema.tables.values():
-                    q = f"DROP TABLE IF EXISTS {table.name}"
+                    q = f'DROP TABLE IF EXISTS {table.name}'
                     await session.raw_conn().execute(q)
 
     async def query(self, table_name, order_field):
@@ -31,13 +31,13 @@ class AsyncpgSchemaExecutor:
     @classmethod
     def _format_type(cls, type_):
         if type_ == TType.INT8:
-            return "int8"
+            return 'int8'
         elif type_ == TType.STR:
-            return "text"
+            return 'text'
         elif type_ == TType.BIGSERIAL:
-            return "bigserial"
+            return 'bigserial'
         else:
-            raise RuntimeError("Unsupported type: %s" % type_)
+            raise RuntimeError('Unsupported type: %s' % type_)
 
     @classmethod
     def _format_value(cls, value, type_):
@@ -46,30 +46,30 @@ class AsyncpgSchemaExecutor:
         elif type_ == TType.STR:
             return f"'{value}'"
         else:
-            raise RuntimeError("Unsupported type: %s" % type_)
+            raise RuntimeError('Unsupported type: %s' % type_)
 
     async def _apply(self, session: AsyncpgSession):
         for table in self._schema.tables.values():
-            q = f"CREATE TABLE {table.name} ("
+            q = f'CREATE TABLE {table.name} ('
             for cnt, column in enumerate(table.columns):
-                q += f"{column.name} {self._format_type(column.type_)} NOT NULL"
-                q += (", " if cnt < len(table.columns) - 1 else "")
-            q += ")"
+                q += f'{column.name} {self._format_type(column.type_)} NOT NULL'
+                q += (', ' if cnt < len(table.columns) - 1 else '')
+            q += ')'
             await session.raw_conn().execute(q)
 
         for table in self._schema.tables.values():
             for d in table.data:
-                q = f"INSERT INTO {table.name} ("
+                q = f'INSERT INTO {table.name} ('
                 for cnt, column in enumerate(table.columns):
                     if column.type_.is_serial:
                         continue
                     q += f'"{column.name}"'
-                    q += (", " if cnt < len(table.columns) - 1 else "")
-                q += ") VALUES ("
+                    q += (', ' if cnt < len(table.columns) - 1 else '')
+                q += ') VALUES ('
                 for cnt, column in enumerate(table.columns):
                     if column.type_.is_serial:
                         continue
                     q += f'{self._format_value(d[column.name], column.type_)}'
-                    q += (", " if cnt < len(table.columns) - 1 else "")
-                q += ")"
+                    q += (', ' if cnt < len(table.columns) - 1 else '')
+                q += ')'
                 await session.raw_conn().execute(q)

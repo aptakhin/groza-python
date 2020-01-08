@@ -5,10 +5,10 @@ from typing import Union
 from groza import GrozaUser
 
 
-groza_db = contextvars.ContextVar("groza_db")
+groza_db = contextvars.ContextVar('groza_db')
 
 
-groza_visors = contextvars.ContextVar("groza_visors")
+groza_visors = contextvars.ContextVar('groza_visors')
 
 
 class GrozaCreator(type):
@@ -20,7 +20,7 @@ class GrozaCreator(type):
             groza_visors.set(GrozaVisors())
         models: GrozaVisors = groza_visors.get()
 
-        if bases and name not in models._visors_dict and name not in ("GrozaForeignKey",):
+        if bases and name not in models._visors_dict and name not in ('GrozaForeignKey',):
             models._visors_dict[name] = instance
 
         def get_value(*_):
@@ -48,15 +48,15 @@ class GrozaSession(ABC):
         pass
 
     @abstractmethod
-    async def insert(self, *, visor: "GrozaVisor", insert: GrozaInput, user: GrozaUser):
+    async def insert(self, *, visor: 'GrozaVisor', insert: GrozaInput, user: GrozaUser):
         pass
 
     @abstractmethod
-    async def update(self, *, visor: "GrozaVisor", update, user: GrozaUser):
+    async def update(self, *, visor: 'GrozaVisor', update, user: GrozaUser):
         pass
 
     @abstractmethod
-    async def delete(self, *, visor: "GrozaVisor", delete, user: GrozaUser):
+    async def delete(self, *, visor: 'GrozaVisor', delete, user: GrozaUser):
         pass
 
 
@@ -75,7 +75,7 @@ class GrozaVisors:
         # self._models = []
         self._visors_dict: dict = {}
 
-    def require_visor(self, name) -> "GrozaVisor":
+    def require_visor(self, name) -> 'GrozaVisor':
         return self._visors_dict[name]
 
     def visor_values(self):

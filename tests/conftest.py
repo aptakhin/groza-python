@@ -45,7 +45,7 @@ class PytestAsyncpgStorage:
     def __init__(self):
         self._notifications = asyncio.Queue()
 
-        postgres_test_dsn = os.getenv("POLAR_SITE_BE_TEST_POSTGRES_DSN")
+        postgres_test_dsn = os.getenv('POLAR_SITE_BE_TEST_POSTGRES_DSN')
         self._storage = AsyncpgStorage(postgres_test_dsn, self._notifications)
 
         self._schema = None
@@ -72,7 +72,7 @@ class PytestAsyncpgStorage:
         return asyncio.get_event_loop().run_until_complete(self._schema_exec.query(table_name, order_field))
 
 
-@pytest.fixture(scope="function", params=[PytestMemoryStorage, PytestAsyncpgStorage])
+@pytest.fixture(scope='function', params=[PytestMemoryStorage, PytestAsyncpgStorage])
 def groza_storage(request):
     groza_storage = request.param()
 

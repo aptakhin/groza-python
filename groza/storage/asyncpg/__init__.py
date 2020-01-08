@@ -11,7 +11,7 @@ from pssq import Q
 
 
 class AsyncpgSession(GrozaSession):
-    def __init__(self, *, conn: "_PostgresPoolProxy", log):
+    def __init__(self, *, conn: '_PostgresPoolProxy', log):
         self._conn = conn
         self._log = log
         self._field_transformer: FieldTransformer = CamelCaseFieldTransformer()
@@ -26,19 +26,19 @@ class AsyncpgSession(GrozaSession):
         sub_desc_from = from_sub
         if sub_desc_from is not None:
             if sub_desc_from not in sub_resp:
-                raise RuntimeError(f"Link '{sub_desc_from}' not found "
-                                   f"in results. Check identifiers and order")
+                raise RuntimeError(f'Link "{sub_desc_from}" not found '
+                                   f'in results. Check identifiers and order')
 
-            link_table = all_sub[sub_desc_from]["table"]
+            link_table = all_sub[sub_desc_from]['table']
 
             link_field = sub_table[1].get(link_table)
             if not link_field:
-                raise RuntimeError(f"Link '{visor.table}'=>'{link_table}' "
-                                   f"not found")
+                raise RuntimeError(f'Link "{visor.table}"=>"{link_table}" '
+                                   f'not found')
 
             link_field = link_field[0]
 
-            q.where(link_field, Q.Any(sub_resp[sub_desc_from]["ids"]))
+            q.where(link_field, Q.Any(sub_resp[sub_desc_from]['ids']))
 
         if where is not None:
             for field, value in where.items():
@@ -73,18 +73,18 @@ class AsyncpgSession(GrozaSession):
 
         for key, value in insert.items():
             own_fields.append(f'"{self._to_db(key)}"')
-            own_values.append(f"${idx}")
+            own_values.append(f'${idx}')
             args += (value,)
             idx += 1
 
-        last_updated_by_field = self._to_db("last_updated_by")
+        last_updated_by_field = self._to_db('last_updated_by')
         own_fields.append(f'"{last_updated_by_field}"')
-        own_values.append(f"${idx}")
+        own_values.append(f'${idx}')
         args += (user.user_id,)
         idx += 1
 
-        own_fields_str = ", ".join(own_fields)
-        own_values_str = ", ".join(own_values)
+        own_fields_str = ', '.join(own_fields)
+        own_values_str = ', '.join(own_values)
 
         primary_key = visor.primary_key
 
@@ -105,12 +105,12 @@ class AsyncpgSession(GrozaSession):
             args += (value,)
             idx += 1
 
-        last_updated_by_field = self._to_db("last_updated_by")
+        last_updated_by_field = self._to_db('last_updated_by')
         fields.append(f'"{last_updated_by_field}" = ${idx}')
         args += (user.user_id,)
         idx += 1
 
-        value_fields = ", ".join(fields)
+        value_fields = ', '.join(fields)
 
         primary_key_field = visor.primary_key
 
@@ -122,7 +122,7 @@ class AsyncpgSession(GrozaSession):
             f'WHERE "{primary_key_field}" = ${primary_key_idx}'
         await self._conn.execute(query_str, *args)
 
-    async def delete(self, *, visor: "GrozaVisor", delete, user: GrozaUser):
+    async def delete(self, *, visor: 'GrozaVisor', delete, user: GrozaUser):
         q = (
             Q.delete()
              .from_(visor.table)
@@ -163,7 +163,7 @@ class _AsyncpgSessionProxy:
 
 class AsyncpgStorage(GrozaStorage):
     def __init__(self, dsn, notifications):
-        self._log = build_logger("SESSION")
+        self._log = build_logger('SESSION')
         self._backend = _PostgresBackend(dsn)
 
         self._notif_conn = None
@@ -185,9 +185,9 @@ class AsyncpgStorage(GrozaStorage):
         self._backend.release(session)
 
     async def start_tables(self):
-        audit_table = "groza_audit"
-        audit_table_seq = f"{audit_table}_id_seq"
-        changed_by_field = f"updatedBy"
+        audit_table = 'groza_audit'
+        audit_table_seq = f'{audit_table}_id_seq'
+        changed_by_field = f'updatedBy'
 
         async with self._backend.pool.acquire() as conn:
             await conn.execute(f'CREATE SEQUENCE IF NOT EXISTS '
@@ -209,11 +209,11 @@ class AsyncpgStorage(GrozaStorage):
 
             for model in self._get_visors():
                 lower_table = model.table.lower()
-                audit_prefix_table = f"{lower_table}_audit"
-                audit_table_func = f"{audit_prefix_table}_func"
-                audit_table_trigger = f"{audit_prefix_table}_trigger"
+                audit_prefix_table = f'{lower_table}_audit'
+                audit_table_func = f'{audit_prefix_table}_func'
+                audit_table_trigger = f'{audit_prefix_table}_trigger'
 
-                last_updated_by_field = f"last_updated_by"
+                last_updated_by_field = f'last_updated_by'
 
                 primary_key_field = model.primary_key
 

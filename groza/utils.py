@@ -20,17 +20,17 @@ def json_serial(obj):
         serial = str(obj)
         return serial
 
-    raise TypeError("Type %s not serializable" % type(obj))
+    raise TypeError('Type %s not serializable' % type(obj))
 
 
 def init_file_loggers(filename, names):
     for name in names:
         logger = logging.getLogger(name)
 
-        file_handler = logging.handlers.RotatingFileHandler(filename, encoding="utf-8", maxBytes=16 * 1024 * 1024, backupCount=5)
+        file_handler = logging.handlers.RotatingFileHandler(filename, encoding='utf-8', maxBytes=16 * 1024 * 1024, backupCount=5)
         file_handler.setLevel(level=logger.level)
 
-        formatter = logging.Formatter("[%(name)s]: %(asctime)s - %(levelname)s - %(message)s")
+        formatter = logging.Formatter('[%(name)s]: %(asctime)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(formatter)
 
         logger.addHandler(file_handler)
@@ -46,7 +46,7 @@ def build_logger(name, is_debug=True):
     if is_debug:
         level = logging.DEBUG
 
-    formatter = logging.Formatter("[%(name)s]: %(asctime)s - %(levelname)s - %(message)s")
+    formatter = logging.Formatter('[%(name)s]: %(asctime)s - %(levelname)s - %(message)s')
 
     stream_handler = logging.StreamHandler()
     stream_handler.setLevel(level=level)
@@ -75,10 +75,10 @@ class CamelCaseFieldTransformer(FieldTransformer):
         """
         camelCase -> camel_case
         """
-        build = ""
+        build = ''
         for c in name:
             if c.isupper():
-                build += "_" + c.lower()
+                build += '_' + c.lower()
             else:
                 build += c
 
@@ -88,7 +88,7 @@ class CamelCaseFieldTransformer(FieldTransformer):
         """
         underscore_case -> underscoreCase
         """
-        build = ""
+        build = ''
 
         ST_NORMAL = 0
         ST_LOWER = 1
@@ -97,7 +97,7 @@ class CamelCaseFieldTransformer(FieldTransformer):
 
         for c in name:
             if state == ST_NORMAL:
-                if c == "_":
+                if c == '_':
                     state = ST_LOWER
                 else:
                     build += c

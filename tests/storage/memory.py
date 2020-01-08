@@ -34,7 +34,7 @@ class MemorySession(GrozaSession):
         visor_data = self._schema.tables[visor.table].data
 
         insert_data = {**insert}
-        insert_data[visor.primary_key] = max(d["id"] for d in visor_data) + 1 if visor_data else 1
+        insert_data[visor.primary_key] = max(d['id'] for d in visor_data) + 1 if visor_data else 1
         self._schema.tables[visor.table].data.append(insert_data)
         return insert_data
 
@@ -47,7 +47,7 @@ class MemorySession(GrozaSession):
         idx = search[0]
         visor_data[idx].update(upd)
 
-    async def delete(self, *, visor: "GrozaVisor", delete, user: GrozaUser):
+    async def delete(self, *, visor: 'GrozaVisor', delete, user: GrozaUser):
         pass
 
     async def query(self, *, visor: GrozaVisor, from_sub: dict, all_sub: dict, sub_resp: dict, where=None, order=None):
@@ -57,7 +57,7 @@ class MemorySession(GrozaSession):
         for item in visor_data:
             add_data[item[visor.primary_key]] = item
 
-        return add_data, ""
+        return add_data, ''
 
 
 class _MemorySessionProxy:
