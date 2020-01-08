@@ -33,7 +33,7 @@ def test_fetch_sub(groza_storage):
     subscription = {
         "allAccounts": {"visor": "Account"},
     }
-    resp = asyncio.get_event_loop().run_until_complete(groza.fetch_sub(GrozaUser(), subscription))
+    resp = asyncio.get_event_loop().run_until_complete(groza.fetch_sub(GrozaUser(user_id=1), subscription))
     data = resp.data["data"]
     sub = resp.data["sub"]
 
@@ -69,8 +69,9 @@ def test_insert(groza_storage):
     }
     insert = {
         "name": "ccc",
+        # "last_updated_by": 1,
     }
-    resp = asyncio.get_event_loop().run_until_complete(groza.query_insert(user=GrozaUser(), query=query, insert=insert))
+    resp = asyncio.get_event_loop().run_until_complete(groza.query_insert(user=GrozaUser(user_id=1), query=query, insert=insert))
     assert resp.data["id"] == 3
 
 
@@ -97,11 +98,13 @@ def test_update(groza_storage):
     update = [
         [{"visor": "Account", "id": 1}, {"name": "aaa1"}],
     ]
-    resp = asyncio.get_event_loop().run_until_complete(groza.query_update(user=GrozaUser(), update=update))
+    resp = asyncio.get_event_loop().run_until_complete(groza.query_update(user=GrozaUser(user_id=1), update=update))
     assert resp.data["status"] == "ok"
 
-    assert schema.tables["accounts"].data[0]["id"] == 1
-    assert schema.tables["accounts"].data[0]["name"] == "aaa1"
+    data = groza_storage.query("accounts", order_field="id")
+
+    assert data[0]["id"] == 1
+    assert data[0]["name"] == "aaa1"
 
 
 if __name__ == "__main__":

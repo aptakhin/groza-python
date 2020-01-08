@@ -133,11 +133,6 @@ class Groza:
         async with self._storage.session() as session:
             visor_instance = visor()
             result = await visor_instance.insert(insert=insert, user=user, session=session)
-            # result = await session.insert(
-            #     visor=visor,
-            #     insert=insert,
-            #     user=user
-            # )
 
         if not result:
             return GrozaResponse({"status": "error", "message": "No result"})
