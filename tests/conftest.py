@@ -4,6 +4,7 @@ from operator import itemgetter
 
 import pytest
 
+from groza.queue.asyncio_queue import AsyncioQueue
 from groza.storage import groza_db, groza_visors, GrozaVisors
 from groza.storage.asyncpg import AsyncpgStorage
 from tests.storage.memory import MemoryStorage
@@ -43,10 +44,12 @@ class PytestAsyncpgStorage:
     """
 
     def __init__(self):
-        self._notifications = asyncio.Queue()
+        self._notifications = AsyncioQueue()
 
         postgres_test_dsn = os.getenv('POLAR_SITE_BE_TEST_POSTGRES_DSN')
-        self._storage = AsyncpgStorage(postgres_test_dsn, self._notifications)
+        self._storage = AsyncpgStorage(postgres_test_dsn)
+        asyncio.get_event_loop().run_until_complete(
+            self._storage.install(self._notifications))
 
         self._schema = None
         self._schema_exec = None

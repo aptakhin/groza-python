@@ -1,7 +1,8 @@
-from typing import Iterable
+from typing import Iterable, Optional
 from uuid import UUID
 
 from groza import GrozaUser
+from groza.queue import BaseQueue
 from groza.storage.asyncpg.impl import _PostgresBackend, _PostgresConn
 from groza.utils import build_logger, FieldTransformer, \
     CamelCaseFieldTransformer
@@ -162,12 +163,15 @@ class _AsyncpgSessionProxy:
 
 
 class AsyncpgStorage(GrozaStorage):
-    def __init__(self, dsn, notifications):
+    def __init__(self, dsn):
         self._log = build_logger('SESSION')
         self._backend = _PostgresBackend(dsn)
 
         self._notif_conn = None
 
+        self._notifications: Optional[BaseQueue] = None
+
+    async def install(self, notifications: BaseQueue):
         self._notifications = notifications
 
     async def connect(self):

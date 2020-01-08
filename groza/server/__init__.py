@@ -1,21 +1,23 @@
 import asyncio
 import json
+from abc import abstractmethod, ABC
 from collections import OrderedDict
-from typing import List
+from typing import List, Optional
 
 from aiohttp import web
 
 from groza import GrozaUser, GrozaRequest, GrozaResponse
-from groza.instance import Groza
+from groza.queue import BaseQueue
+from groza.state import GrozaHandler
+from groza.transport import GrozaServerTransport
 from groza.utils import build_logger, json_serial
 
 
-class Connection:
-    def __init__(self, handler, ws, queries):
-        self.handler: Groza = handler
+class GrozaServerConnection:
+    def __init__(self, handler, response):
+        self.handler: GrozaHandler = handler
         self.user = GrozaUser(auth_token='', user_id=1)
-        self.ws = ws
-        self.queries = queries
+        self.ws = response
         self.log = build_logger('WS')
         self.auth_token = None
         self.all_sub = {}
@@ -69,7 +71,7 @@ class Connection:
         return resp
 
     async def handle(self):
-        async for message in self.ws:
+        async for message in await self.ws.get_messages():
             try:
                 self.log.debug(f'Req : {message}')
                 request = json.loads(message.data, object_pairs_hook=OrderedDict)
@@ -83,7 +85,7 @@ class Connection:
     async def send(self, resp):
         js = json.dumps(resp, default=json_serial)
         self.log.debug('.. Resp: %s' % js)
-        await self.ws.send_str(js)
+        await self.ws.send(js)
 
     async def send_sub(self):
         resp = await self.handler.fetch_sub(self.user, self.all_sub)
@@ -105,44 +107,54 @@ class Connection:
             break
 
 
-class Server:
-    def __init__(self, notifications):
-        self._log = build_logger('Server')
-        self.conns: List[Connection] = []
-        self.queries = []
+class GrozaServer(ABC):
+    def __init__(self, name: str):
+        self._name: str = name
+        self._notifications: Optional[BaseQueue] = None
 
+    @property
+    def name(self):
+        return self._name
+
+    async def install(self, notifications: BaseQueue) -> 'GrozaServer':
         self._notifications = notifications
+        return self
 
-    async def start(self):
+    @abstractmethod
+    async def notify_connection_start(self, conn: GrozaServerConnection):
         pass
 
-    async def ws_handler(self, request):
-        ws = web.WebSocketResponse()
-        await ws.prepare(request)
+    @abstractmethod
+    async def notify_connection_close(self, conn: GrozaServerConnection):
+        pass
 
-        handler = Groza()
+    @abstractmethod
+    async def notify_change(self, pid, channel, obj_id):
+        pass
 
-        conn = Connection(handler, ws, self.queries)
-        self.conns.append(conn)
 
-        self._log.debug('New connection (all: %d)' % len(self.conns))
+class SimpleGrozaServer(GrozaServer):
+    def __init__(self, name, transport: GrozaServerTransport):
+        self._name = name
+        self._log = build_logger('Server')
+        self._conns: List[GrozaServerConnection] = []
 
-        try:
-            await conn.handle()
-        finally:
-            self.conns.remove(conn)
+        self._notifications: Optional[BaseQueue] = None
 
-        return ws
+        self._transport: GrozaServerTransport = transport
 
-    async def loop(self):
-        self._log.info('Started loop')
-        while True:
-            while not self._notifications.empty():
-                pid, channel, obj_id = await self._notifications.get()
+    async def install(self, notifications: BaseQueue) -> 'SimpleGrozaServer':
+        self._notifications = notifications
+        await self._transport.install(self)
+        return self
 
-                # TODO: Don't send full sub on same pids
+    async def notify_connection_start(self, conn: GrozaServerConnection):
+        self._conns.append(conn)
 
-                for conn in self.conns:
-                    await conn.notify_change(channel, obj_id)
+    async def notify_connection_close(self, conn: GrozaServerConnection):
+        self._conns.remove(conn)
 
-            await asyncio.sleep(0.3)
+    async def notify_change(self, pid, channel, obj_id):
+        for conn in self._conns:
+            await conn.notify_change(channel, obj_id)
+

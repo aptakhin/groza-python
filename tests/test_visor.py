@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from groza import GrozaUser
-from groza.instance import Groza
+from groza.state import GrozaHandler
 from groza.storage import GrozaVisor
 
 from tests.schema import TTable, TSchema, TColumn, TType, TRow
@@ -29,7 +29,7 @@ def test_fetch_sub(groza_storage):
         table = 'accounts'
         primary_key = 'id'
 
-    groza = Groza()
+    groza = GrozaHandler()
     subscription = {
         'allAccounts': {'visor': 'Account'},
     }
@@ -63,7 +63,7 @@ def test_insert(groza_storage):
         table = 'accounts'
         primary_key = 'id'
 
-    groza = Groza()
+    groza = GrozaHandler()
     query = {
         'visor': 'Account',
     }
@@ -93,7 +93,7 @@ def test_update(groza_storage):
         table = 'accounts'
         primary_key = 'id'
 
-    groza = Groza()
+    groza = GrozaHandler()
     update = [
         [{'visor': 'Account', 'id': 1}, {'name': 'aaa1'}],
     ]
