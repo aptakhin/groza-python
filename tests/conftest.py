@@ -76,7 +76,7 @@ class PytestAsyncpgStorage:
             self._schema_exec.query(table_name, order_field))
 
 
-@pytest.fixture(scope='function', params=[PytestMemoryStorage, PytestAsyncpgStorage])
+@pytest.fixture(scope='function', params=[PytestMemoryStorage])
 def groza_storage(request):
     groza_storage = request.param()
 
