@@ -1,6 +1,4 @@
-![CircleCI](https://img.shields.io/circleci/build/gh/aptakhin/groza)
-[https://circleci.com/gh/aptakhin/groza.svg?style=svg](https://circleci.com/gh/aptakhin/groza)
-![https://circleci.com/gh/aptakhin/groza.svg?style=svg](https://circleci.com/gh/aptakhin/groza)
+![CircleCI](https://img.shields.io/circleci/build/gh/aptakhin/groza-python)
 
 Prototype for browser-server transport for PostgresQL
 
