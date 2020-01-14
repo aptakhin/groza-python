@@ -28,6 +28,8 @@ jobs:
             python3 -m venv venv
             . venv/bin/activate
             pip install -r requirements.txt
+            pip install pytest pytest-cov
+      - sonarcloud/scan
 
       - save_cache:
           paths:
@@ -44,7 +46,17 @@ jobs:
           command: |
             . venv/bin/activate
             pytest -s tests
+            pytest --cov=./
 
       - store_artifacts:
           path: test-reports
           destination: test-reports
+
+orbs:
+  sonarcloud: sonarsource/sonarcloud@1.0.1
+
+workflows:
+  main:
+    jobs:
+      - build:
+          context: SonarCloud
